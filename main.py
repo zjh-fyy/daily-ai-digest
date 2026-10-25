@@ -431,8 +431,10 @@ def generate_digest_with_codex(
 ) -> str:
     """
     调用用户专属 Codex API (基于 OpenAI /v1/responses 协议，带自动节点故障转移与深度思考)
-    主节点：https://ca.memofun.net/v1 (香港原生高速直连)
-    备用节点：https://codex-api.aizex.net/v1 (Cloudflare 全球加速)
+    根据网络环境智能调整节点顺序：
+    - GitHub Actions (海外云端环境)：优先 Cloudflare 全球加速节点 https://codex-api.aizex.net/v1
+    - 本地国内环境：优先香港原生直连节点 https://ca.memofun.net/v1
+    支持 HTTP 409 (operation_in_progress) / 502 / 503 / 504 自动等待 20s 并重试
     """
     codex_model = (os.getenv("CODEX_MODEL") or "gpt-6.1-sol").strip()
     codex_effort = (os.getenv("CODEX_EFFORT") or "medium").strip().lower()
@@ -441,10 +443,25 @@ def generate_digest_with_codex(
     if codex_effort not in valid_efforts:
         codex_effort = "medium"
 
-    endpoints = [
-        "https://ca.memofun.net/v1",       # 主节点
-        "https://codex-api.aizex.net/v1"   # 备用节点
-    ]
+    # 根据运行环境动态排序端点
+    is_github_actions = (os.getenv("GITHUB_ACTIONS") or "").strip().lower() == "true"
+    if is_github_actions:
+        endpoints = [
+            "https://codex-api.aizex.net/v1",   # Cloudflare 全球加速 (海外云环境首选)
+            "https://ca.memofun.net/v1"         # 香港原生高速直连 (备选)
+        ]
+    else:
+        endpoints = [
+            "https://ca.memofun.net/v1",         # 香港原生高速直连 (国内环境首选)
+            "https://codex-api.aizex.net/v1"    # Cloudflare 全球加速 (备选)
+        ]
+
+    # 用户若显式指定 CODEX_BASE_URL，优先插入首位
+    custom_base_url = (os.getenv("CODEX_BASE_URL") or "").strip().rstrip("/")
+    if custom_base_url:
+        if custom_base_url in endpoints:
+            endpoints.remove(custom_base_url)
+        endpoints.insert(0, custom_base_url)
 
     prompt = build_digest_prompt(global_news, ai_news, github_projects)
 
@@ -471,44 +488,72 @@ def generate_digest_with_codex(
     last_error = None
     for b_url in endpoints:
         endpoint = f"{b_url}/responses"
-        print(f"  🚀 正在向 Codex API 发送请求 (模型: {codex_model}, 思考深度: {codex_effort}, 节点: {b_url}) ...")
-        t0 = time.time()
-        try:
-            resp = requests.post(endpoint, headers=headers, json=payload, timeout=150)
-            elapsed = time.time() - t0
-            if resp.status_code == 200:
-                data = resp.json()
-                output_items = data.get("output", [])
-                text_parts = []
-                for item in output_items:
-                    if item.get("type") == "message":
-                        for c in item.get("content", []):
-                            if c.get("type") == "output_text":
-                                text_parts.append(c.get("text", ""))
+        max_node_retries = 3
+        for retry_idx in range(1, max_node_retries + 1):
+            print(f"  🚀 正在向 Codex API 发送请求 (模型: {codex_model}, 思考深度: {codex_effort}, 节点: {b_url}, 尝试: {retry_idx}/{max_node_retries}) ...")
+            t0 = time.time()
+            try:
+                resp = requests.post(endpoint, headers=headers, json=payload, timeout=180)
+                elapsed = time.time() - t0
+                if resp.status_code == 200:
+                    data = resp.json()
+                    output_items = data.get("output", [])
+                    text_parts = []
+                    for item in output_items:
+                        if item.get("type") == "message":
+                            for c in item.get("content", []):
+                                if c.get("type") == "output_text":
+                                    text_parts.append(c.get("text", ""))
 
-                final_text = "".join(text_parts).strip()
-                if not final_text:
-                    raise RuntimeError("Codex API 返回内容为空")
+                    final_text = "".join(text_parts).strip()
+                    if not final_text:
+                        raise RuntimeError("Codex API 返回内容为空")
 
-                usage = data.get("usage", {})
-                reasoning_tokens = usage.get("output_tokens_details", {}).get("reasoning_tokens", 0)
-                output_tokens = usage.get("output_tokens", 0)
-                input_tokens = usage.get("input_tokens", 0)
+                    usage = data.get("usage", {})
+                    reasoning_tokens = usage.get("output_tokens_details", {}).get("reasoning_tokens", 0)
+                    output_tokens = usage.get("output_tokens", 0)
+                    input_tokens = usage.get("input_tokens", 0)
 
-                print(
-                    f"  🎉 Codex API ({codex_model}) 生成成功！耗时: {elapsed:.2f}s, "
-                    f"输入Token: {input_tokens}, 输出Token: {output_tokens} (含思考: {reasoning_tokens}), 字符数: {len(final_text)}"
-                )
-                return final_text
-            else:
-                err_msg = f"节点 {b_url} 返回 HTTP {resp.status_code}: {resp.text[:250]}"
-                print(f"  [节点告警] {err_msg}，准备尝试备用节点...")
-                last_error = RuntimeError(err_msg)
-        except Exception as e:
-            elapsed = time.time() - t0
-            err_msg = f"节点 {b_url} 请求异常 ({elapsed:.2f}s): {e}"
-            print(f"  [节点故障] {err_msg}，准备尝试备用节点...")
-            last_error = e
+                    print(
+                        f"  🎉 Codex API ({codex_model}) 生成成功！耗时: {elapsed:.2f}s, "
+                        f"输入Token: {input_tokens}, 输出Token: {output_tokens} (含思考: {reasoning_tokens}), 字符数: {len(final_text)}"
+                    )
+                    return final_text
+                elif resp.status_code in (409, 502, 503, 504) or "operation_in_progress" in resp.text:
+                    err_msg = f"节点 {b_url} 返回 HTTP {resp.status_code}: {resp.text[:200]}"
+                    print(f"  [并发锁占用/服务繁忙] {err_msg}")
+                    last_error = RuntimeError(err_msg)
+                    if retry_idx < max_node_retries:
+                        wait_sec = 20
+                        print(f"  ⏳ 等待 {wait_sec} 秒让上一次后台任务释放锁后重试 (第 {retry_idx}/{max_node_retries} 次)...")
+                        time.sleep(wait_sec)
+                        continue
+                    else:
+                        print(f"  [-] 节点 {b_url} 重试耗尽，切换至备用节点...")
+                        break
+                else:
+                    err_msg = f"节点 {b_url} 返回 HTTP {resp.status_code}: {resp.text[:250]}"
+                    print(f"  [节点告警] {err_msg}，准备尝试备用节点...")
+                    last_error = RuntimeError(err_msg)
+                    break
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                elapsed = time.time() - t0
+                err_msg = f"节点 {b_url} 网络异常 ({elapsed:.2f}s): {e}"
+                print(f"  [网络中断] {err_msg}")
+                last_error = e
+                if retry_idx < max_node_retries:
+                    wait_sec = 15
+                    print(f"  ⏳ 等待 {wait_sec} 秒后重试该节点...")
+                    time.sleep(wait_sec)
+                    continue
+                else:
+                    break
+            except Exception as e:
+                elapsed = time.time() - t0
+                err_msg = f"节点 {b_url} 请求异常 ({elapsed:.2f}s): {e}"
+                print(f"  [节点故障] {err_msg}，准备尝试备用节点...")
+                last_error = e
+                break
 
     raise last_error or RuntimeError("所有 Codex 节点均未能成功响应")
 
@@ -548,17 +593,26 @@ def generate_digest_with_deepseek(
         "max_tokens": 8192
     }
 
-    print(f"  🚀 正在向 DeepSeek API 发送生成请求 (模型: {model}, 接口: {url}) ...")
-    resp = requests.post(url, headers=headers, json=payload, timeout=120)
+    print(f"  🚀 正在向 DeepSeek API 发送生成请求 (模型: {model}, 接口: {url}, 超时设定: 240s) ...")
+    t0 = time.time()
+    resp = requests.post(url, headers=headers, json=payload, timeout=240)
+    elapsed = time.time() - t0
     if resp.status_code == 200:
         data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+        choices = data.get("choices", [])
+        if not choices:
+            raise RuntimeError(f"DeepSeek 返回数据中无 choices: {data}")
+        msg = choices[0].get("message", {})
+        content = msg.get("content") or ""
+        if not content and msg.get("reasoning_content"):
+            content = msg.get("reasoning_content")
         usage = data.get("usage", {})
-        print(f"  🎉 DeepSeek 生成成功！模型: {model}, 消耗 Token: {usage.get('total_tokens', 'N/A')}, 字符数: {len(content)}")
+        print(f"  🎉 DeepSeek 生成成功！耗时: {elapsed:.2f}s, 模型: {model}, 消耗 Token: {usage.get('total_tokens', 'N/A')}, 字符数: {len(content)}")
         return content
     else:
         err_msg = f"HTTP {resp.status_code}: {resp.text[:300]}"
         raise RuntimeError(err_msg)
+
 
 
 def generate_digest_with_gemini(
@@ -653,43 +707,49 @@ def generate_digest(
         deepseek_key = gemini_key
         print("  💡 [智能防呆识别] 检测到 GEMINI_API_KEY 格式为 'sk-...'，自动识别为 DeepSeek API Key！")
 
-    last_error = ""
+    errors = []
 
     def try_codex() -> Optional[str]:
-        nonlocal last_error
-        if codex_key:
-            model_name = (os.getenv("CODEX_MODEL") or "gpt-6.1-sol").strip()
-            effort_level = (os.getenv("CODEX_EFFORT") or "medium").strip().lower()
-            print(f"\n🧠 调度主力大模型引擎: Codex API ({model_name} + {effort_level} 深度思考)...")
-            try:
-                return generate_digest_with_codex(global_news, ai_news, github_projects, codex_key)
-            except Exception as e:
-                last_error = f"Codex API 失败: {e}"
-                print(f"  [降级触发] {last_error}，自动切换至备用引擎...")
-        return None
+        if not codex_key:
+            errors.append("Codex: 未配置 CODEX_API_KEY")
+            return None
+        model_name = (os.getenv("CODEX_MODEL") or "gpt-6.1-sol").strip()
+        effort_level = (os.getenv("CODEX_EFFORT") or "medium").strip().lower()
+        print(f"\n🧠 调度大模型引擎: Codex API ({model_name} + {effort_level} 深度思考)...")
+        try:
+            return generate_digest_with_codex(global_news, ai_news, github_projects, codex_key)
+        except Exception as e:
+            err = f"Codex API 失败: {e}"
+            errors.append(err)
+            print(f"  [降级触发] {err}，自动切换至下一备用引擎...")
+            return None
 
     def try_deepseek() -> Optional[str]:
-        nonlocal last_error
-        if deepseek_key:
-            model_name = (os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro").strip()
-            print(f"\n🧠 调度大模型引擎: DeepSeek ({model_name})...")
-            try:
-                return generate_digest_with_deepseek(global_news, ai_news, github_projects, deepseek_key)
-            except Exception as e:
-                last_error = f"DeepSeek API 失败: {e}"
-                print(f"  [降级触发] {last_error}，自动切换至下一备用引擎...")
-        return None
+        if not deepseek_key:
+            errors.append("DeepSeek: 未配置 DEEPSEEK_API_KEY")
+            return None
+        model_name = (os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro").strip()
+        print(f"\n🧠 调度大模型引擎: DeepSeek ({model_name})...")
+        try:
+            return generate_digest_with_deepseek(global_news, ai_news, github_projects, deepseek_key)
+        except Exception as e:
+            err = f"DeepSeek API 失败: {e}"
+            errors.append(err)
+            print(f"  [降级触发] {err}，自动切换至下一备用引擎...")
+            return None
 
     def try_gemini() -> Optional[str]:
-        nonlocal last_error
-        if gemini_key and not gemini_key.startswith("sk-"):
-            print("\n🧠 调度备用大模型引擎: Google Gemini (动态模型)...")
-            try:
-                return generate_digest_with_gemini(global_news, ai_news, github_projects)
-            except Exception as e:
-                last_error = f"Gemini API 失败: {e}"
-                print(f"  [降级触发] {last_error}，启用本地应急提炼引擎...")
-        return None
+        if not gemini_key or gemini_key.startswith("sk-"):
+            errors.append("Gemini: 未配置有效 GEMINI_API_KEY")
+            return None
+        print("\n🧠 调度备用大模型引擎: Google Gemini (动态模型)...")
+        try:
+            return generate_digest_with_gemini(global_news, ai_news, github_projects)
+        except Exception as e:
+            err = f"Gemini API 失败: {e}"
+            errors.append(err)
+            print(f"  [降级触发] {err}，启用本地应急提炼引擎...")
+            return None
 
     # 根据 primary_engine 确定调用顺序
     if primary_engine == "deepseek":
@@ -703,8 +763,9 @@ def generate_digest(
             return result
 
     # 终极兜底：本地高质量数据底座应急早报生成
-    print(f"\n⚠️ [自动容灾] 启用本地多源数据底座应急早报生成引擎 (原因: {last_error[:80] if last_error else '未配置可用大模型 Key'})...")
-    return generate_fallback_digest(global_news, ai_news, github_projects, reason=last_error)
+    combined_reason = " | ".join(errors)
+    print(f"\n⚠️ [自动容灾] 所有大模型引擎均未响应，启用本地多源数据底座应急早报生成引擎 (原因: {combined_reason[:150]})...")
+    return generate_fallback_digest(global_news, ai_news, github_projects, reason=combined_reason)
 
 
 def generate_fallback_digest(
@@ -713,7 +774,7 @@ def generate_fallback_digest(
     github_projects: List[Dict[str, Any]],
     reason: str = ""
 ) -> str:
-    """当 Gemini API 遭遇 Google 云端权限风控或网络熔断时，依托本地采集的高质量多源数据底座生成应急早报"""
+    """当所有大模型 API 遭遇网络故障或限流时，依托本地采集的高质量多源数据底座生成应急早报"""
     now_bj = datetime.now(BEIJING_TZ)
     date_str = now_bj.strftime("%Y年%m月%d日")
     weekday_map = {0: "星期一", 1: "星期二", 2: "星期三", 3: "星期四", 4: "星期五", 5: "星期六", 6: "星期日"}
@@ -733,9 +794,10 @@ def generate_fallback_digest(
         ])
     elif reason:
         lines.extend([
-            f"> ⚠️ **【Gemini 接口提示】**：云端大模型接口返回异常 (`{reason[:100]}`)。今日早报已由本地多源数据底座为您完整生成送达！",
+            f"> ⚠️ **【大模型接口提示】**：云端大模型接口返回异常 (`{reason[:180]}`)。今日早报已由本地多源数据底座为您完整生成送达！",
             ""
         ])
+
 
     lines.extend([
         "## 🌍 板块一：全球时事（深度精选）",
