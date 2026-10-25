@@ -1,0 +1,68 @@
+name: Daily AI & Global Digest
+
+on:
+  schedule:
+    # DeepSeek 官方半价空闲时段为北京时间 00:30 ~ 08:30（立享 5 折）。
+    # 设置在 UTC 00:15 (北京时间 08:15) 启动，算上 GitHub 队列缓冲，
+    # 刚好在 08:20~08:28 完成半价调用并推送到邮箱！(若想改回 08:55，将 15 0 改为 55 0 即可)
+    - cron: '15 0 * * *'
+  workflow_dispatch: # 支持在 GitHub 仓库 Actions 页面手动点击 "Run workflow" 随时测试
+    inputs:
+      primary_engine:
+        description: '选择本次运行的主力引擎 (Primary Engine)'
+        required: false
+        default: 'codex'
+        type: choice
+        options:
+          - codex
+          - deepseek
+          - gemini
+
+jobs:
+  build-and-send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Daily Digest Script
+        env:
+          PRIMARY_ENGINE: ${{ inputs.primary_engine || secrets.PRIMARY_ENGINE || 'codex' }}
+          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+          CODEX_BASE_URL: ${{ secrets.CODEX_BASE_URL }}
+          CODEX_MODEL: ${{ secrets.CODEX_MODEL }}
+          CODEX_EFFORT: ${{ secrets.CODEX_EFFORT }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
+          DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: |
+          python main.py
+
+      - name: Upload Digest Artifact (Backup)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: daily-digest-preview
+          path: preview_digest.md
+          retention-days: 7
