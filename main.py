@@ -387,6 +387,7 @@ def build_digest_prompt(
 
 #### 🌅 标题：`每日 AI & 全球资讯早报 | {date_str} {weekday_str}`
 简练导语（30~50字，点出今日最具震撼力的 1~2 个看点）。
+- **【严禁废话与免责声明】**：严禁输出诸如“编读说明”、“本报依据所提供的数据底座编选”、“未进行实时联网复核”等任何元说明或免责声明！导语之后直接进入【🌍 板块一：全球时事】。
 
 #### 🌍 板块一：全球时事（重深度、前因后果与多方影响）
 - 精选过去 24 小时最关键的 **4~6 条**全球重大政经、科技或地缘热点。
@@ -419,6 +420,7 @@ def build_digest_prompt(
 2. 格式：清晰优雅的 Markdown 格式（使用 `#`, `##`, `###`, `**加粗**`, `- 列表`, `>` 引用块）。
 3. 避免在微信中渲染效果差的复杂 HTML 语法或多列宽表格，以引用卡片和列表为主，确保手机小屏沉浸阅读。
 4. 【完整性铁律】：必须完整输出全部三大板块（板块一：全球时事、板块二：指定 AI 核心追踪 + 福利专栏、板块三：GitHub 热门开源），切勿写得冗长导致后半部分被截断！每条要闻/项目控制在 150~200 字，精准提炼。
+5. 【纯净内容准则】：坚决禁止输出任何编者说明、数据底座局限性或未联网说明，导语之后直接切入板块一正文。
 """
     return prompt
 
@@ -471,11 +473,14 @@ def generate_digest_with_codex(
         "instructions": (
             "你是一位殿堂级科技主编与资深国际政治经济观察家。请基于提供的数据底座，"
             "为移动端读者精编一份结构严谨、前因后果清晰、大白话解读开源项目、兼具深度与可读性的每日 AI & 全球资讯早报。"
-            "请务必完整输出三大板块，切勿遗漏。"
+            "请务必完整输出三大板块，切勿遗漏。严禁输出任何关于未联网或数据底座局限性的免责声明或编者说明。"
         ),
         "reasoning": {
             "effort": codex_effort
-        }
+        },
+        "tools": [
+            {"type": "web_search"}
+        ]
     }
 
     headers = {
@@ -490,7 +495,8 @@ def generate_digest_with_codex(
         endpoint = f"{b_url}/responses"
         max_node_retries = 3
         for retry_idx in range(1, max_node_retries + 1):
-            print(f"  🚀 正在向 Codex API 发送请求 (模型: {codex_model}, 思考深度: {codex_effort}, 节点: {b_url}, 尝试: {retry_idx}/{max_node_retries}) ...")
+            tools_desc = "带实时 WebSearch 增强" if "tools" in payload else "无外部工具"
+            print(f"  🚀 正在向 Codex API 发送请求 (模型: {codex_model}, 思考深度: {codex_effort}, {tools_desc}, 节点: {b_url}, 尝试: {retry_idx}/{max_node_retries}) ...")
             t0 = time.time()
             try:
                 resp = requests.post(endpoint, headers=headers, json=payload, timeout=180)
@@ -519,6 +525,10 @@ def generate_digest_with_codex(
                         f"输入Token: {input_tokens}, 输出Token: {output_tokens} (含思考: {reasoning_tokens}), 字符数: {len(final_text)}"
                     )
                     return final_text
+                elif resp.status_code == 400 and "tools" in payload:
+                    print(f"  [特性适配] 节点 {b_url} 不支持 web_search 工具，自动移除 tools 字段并重试...")
+                    payload.pop("tools", None)
+                    continue
                 elif resp.status_code in (409, 502, 503, 504) or "operation_in_progress" in resp.text:
                     err_msg = f"节点 {b_url} 返回 HTTP {resp.status_code}: {resp.text[:200]}"
                     print(f"  [并发锁占用/服务繁忙] {err_msg}")
@@ -531,6 +541,7 @@ def generate_digest_with_codex(
                     else:
                         print(f"  [-] 节点 {b_url} 重试耗尽，切换至备用节点...")
                         break
+
                 else:
                     err_msg = f"节点 {b_url} 返回 HTTP {resp.status_code}: {resp.text[:250]}"
                     print(f"  [节点告警] {err_msg}，准备尝试备用节点...")
@@ -946,7 +957,7 @@ def markdown_to_html(md_text: str, title: str) -> str:
   <div style="background:linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #3b82f6 100%);padding:22px 24px;color:#ffffff;">
     <div style="font-size:12px;letter-spacing:1px;opacity:0.9;text-transform:uppercase;font-weight:600;">DAILY INTELLIGENCE DIGEST</div>
     <h1 style="margin:6px 0 0;font-size:20px;font-weight:700;color:#ffffff;line-height:1.3;">🌅 {title}</h1>
-    <div style="font-size:13px;opacity:0.85;margin-top:6px;">由 Google Gemini 深度提炼 · 自动化每日送达</div>
+    <div style="font-size:13px;opacity:0.85;margin-top:6px;">由 Codex 6.1-sol & DeepSeek V4 Pro 深度提炼 · 自动化每日送达</div>
   </div>
   <div style="padding:20px 24px;">
     {body_html}
