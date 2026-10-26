@@ -3,12 +3,12 @@
 """
 每日 AI & 全球资讯早报 (Daily AI & Global Digest)
 --------------------------------------------------
-自动化多源数据抓取 -> Google Gemini 深度提炼 (带 Google Search Grounding) -> PushPlus 微信推送
+自动化多源数据抓取 -> 大模型智能提炼 (Codex 6.1-sol / DeepSeek V4 Pro / Gemini) -> 多渠道推送
 
 核心功能板块：
 1. 🌍 全球时事（前因后果、多方视角、背景脉络与权威来源）
-2. 🤖 指定 AI 追踪（OpenAI/Codex, Google/Gemini/Antigravity, Anthropic/Claude + 最新福利羊毛专栏）
-3. 🔥 GitHub 热门开源（AI/数码/高星爆发，通俗大白话场景化解读）
+2. 🤖 AI 核心御三家 & 英伟达/特斯拉深度追踪（OpenAI/Codex, Google/Gemini, Anthropic/Claude + NVIDIA/Tesla）
+3. 🔥 GitHub 开源项目寻宝（今日飙升热榜 + 每日宝藏/殿堂级神器精选）
 """
 
 import os
@@ -16,9 +16,10 @@ import sys
 import re
 import json
 import time
+import hashlib
 import urllib.parse
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 
 # 保证在各类控制台（尤其 Windows GBK 默认终端）下输出中文与 Emoji 不发生 UnicodeEncodeError
 if hasattr(sys.stdout, "reconfigure"):
@@ -146,24 +147,29 @@ def collect_global_news() -> List[Dict[str, str]]:
 
 
 def collect_ai_news() -> List[Dict[str, str]]:
-    """采集指定 AI 核心生态（OpenAI/Google/Anthropic）及福利优惠资讯"""
-    print("\n[2/3] 正在采集【指定 AI 追踪 & 优惠福利】资讯...")
+    """采集 AI 核心御三家（OpenAI/Google/Anthropic）及英伟达/特斯拉双巨头最新要闻"""
+    print("\n[2/4] 正在采集【AI 御三家 & 英伟达/特斯拉双巨头】最新资讯...")
     all_ai_items = []
     seen_titles = set()
 
-    # 1. OpenAI 官方新闻
+    # 1. OpenAI 官方新闻 RSS
     openai_feed = fetch_rss_feed("https://openai.com/news/rss.xml", "OpenAI Official News", max_items=5)
     for it in openai_feed:
         all_ai_items.append(it)
         seen_titles.add(it["title"][:25].lower())
 
-    # 2. Google News 专项靶向检索（过去 1-2 天关于三大家和福利）
+    # 2. Google News 专项靶向检索（过去 2 天聚焦 AI 御三家 + 英伟达/特斯拉）
     targeted_queries = [
-        ('("OpenAI" OR "Codex" OR "GPT") when:2d', "OpenAI / Codex 检索", "en-US", "US:en"),
-        ('("Gemini" OR "Antigravity" OR "Google AI Studio") when:2d', "Google Gemini / Antigravity 检索", "en-US", "US:en"),
-        ('("Claude" OR "Anthropic" OR "Claude Code") when:2d', "Anthropic Claude 检索", "en-US", "US:en"),
-        ('("AI" AND ("free tier" OR "student discount" OR "credits" OR "免费额度" OR "福利")) when:3d', "AI 福利优惠 (中文检索)", "zh-CN", "CN:zh-Hans"),
-        ('("AI" AND ("free credits" OR "student discount" OR "free tier" OR "giveaway")) when:3d', "AI Perks / Credits (Global)", "en-US", "US:en")
+        # AI 御三家
+        ('("OpenAI" OR "GPT" OR "Codex") when:2d', "OpenAI / GPT / Codex 检索", "en-US", "US:en"),
+        ('("Gemini" OR "Antigravity" OR "Google AI") when:2d', "Google Gemini / Antigravity 检索", "en-US", "US:en"),
+        ('("Claude" OR "Anthropic") when:2d', "Anthropic Claude 检索", "en-US", "US:en"),
+        # 英伟达 (NVIDIA) 算力与芯片生态
+        ('("NVIDIA" OR "Jensen Huang" OR "Blackwell" OR "Rubin" OR "CUDA") when:2d', "NVIDIA / 英伟达生态 (Global)", "en-US", "US:en"),
+        ('("英伟达" OR "黄仁勋") when:2d', "英伟达 / 黄仁勋 (中文热点)", "zh-CN", "CN:zh-Hans"),
+        # 特斯拉 (Tesla) 自动驾驶与具身智能
+        ('("Tesla" OR "FSD" OR "Optimus" OR "Robotaxi" OR "Elon Musk") when:2d', "Tesla / 特斯拉智能 (Global)", "en-US", "US:en"),
+        ('("特斯拉" OR "FSD" OR "Optimus" OR "马斯克") when:2d', "特斯拉 / FSD / 具身智能 (中文热点)", "zh-CN", "CN:zh-Hans"),
     ]
 
     for q, label, hl, ceid in targeted_queries:
@@ -176,8 +182,8 @@ def collect_ai_news() -> List[Dict[str, str]]:
                 seen_titles.add(t_key)
                 all_ai_items.append(it)
 
-    # 3. Hacker News 高分 AI 深度讨论帖（>= 20 points）
-    hn_url = "https://hnrss.org/newest?q=GPT+OR+Claude+OR+Gemini+OR+Codex+OR+Antigravity&points=20"
+    # 3. Hacker News 高分 AI/科技深度讨论帖（>= 20 points）
+    hn_url = "https://hnrss.org/newest?q=GPT+OR+Claude+OR+Gemini+OR+Codex+OR+NVIDIA+OR+Tesla&points=20"
     hn_items = fetch_rss_feed(hn_url, "Hacker News (Top AI Discussions)", max_items=5)
     for it in hn_items:
         t_key = it["title"][:25].lower()
@@ -185,8 +191,12 @@ def collect_ai_news() -> List[Dict[str, str]]:
             seen_titles.add(t_key)
             all_ai_items.append(it)
 
-    print(f"  => AI 核心生态汇总去重后共 {len(all_ai_items)} 条数据底座")
+    print(f"  => AI 核心御三家与英伟达/特斯拉汇总去重后共 {len(all_ai_items)} 条数据底座")
     return all_ai_items
+
+
+# 别名兼容
+fetch_ai_and_perks_news = collect_ai_news
 
 
 def collect_github_trending() -> List[Dict[str, Any]]:
@@ -266,6 +276,166 @@ def collect_github_trending() -> List[Dict[str, Any]]:
         print(f"  ❌ GitHub Search API 降级方案亦失败: {e}")
 
     return projects
+
+
+# ==================== 每日经典宝藏项目池 (30+ 维度轮换与兜底) ====================
+CLASSIC_QUERY_POOL = [
+    {"topic": "生产力与效率工具", "query": "stars:8000..150000 topic:productivity", "sort": "stars"},
+    {"topic": "自动化运维与工作流", "query": "stars:5000..90000 topic:automation", "sort": "stars"},
+    {"topic": "桌面端装机必备", "query": "stars:8000..120000 desktop in:readme,description", "sort": "stars"},
+    {"topic": "音视频处理与剪辑神器", "query": "stars:6000..100000 video in:description", "sort": "stars"},
+    {"topic": "音频处理与语音黑科技", "query": "stars:5000..80000 audio in:description", "sort": "stars"},
+    {"topic": "Windows 效率与系统增强", "query": "stars:4000..70000 windows tool in:description,readme", "sort": "stars"},
+    {"topic": "极客终端与命令行神器", "query": "stars:8000..120000 cli in:description,readme", "sort": "stars"},
+    {"topic": "自托管与私人私有云", "query": "stars:8000..120000 topic:self-hosted", "sort": "stars"},
+    {"topic": "OCR 文字识别与文档解析", "query": "stars:4000..60000 ocr in:description,readme", "sort": "stars"},
+    {"topic": "Markdown 与知识管理工具", "query": "stars:6000..90000 markdown in:description", "sort": "stars"},
+    {"topic": "浏览器增强与效率扩展", "query": "stars:5000..80000 browser extension in:description", "sort": "stars"},
+    {"topic": "轻量游戏引擎与互动创意", "query": "stars:5000..80000 game engine in:description", "sort": "stars"},
+    {"topic": "AI 赋能生产力桌面端", "query": "stars:10000..150000 ai tool in:readme", "sort": "stars"},
+    {"topic": "网络安全与隐私守护", "query": "stars:6000..90000 security tool in:description", "sort": "stars"},
+    {"topic": "UI/UX 设计与绘图神器", "query": "stars:6000..90000 design tool in:description", "sort": "stars"},
+    {"topic": "系统资源监控与性能分析", "query": "stars:7000..100000 system monitor in:description", "sort": "stars"},
+    {"topic": "高速下载与传输利器", "query": "stars:6000..90000 download in:description,readme", "sort": "stars"},
+    {"topic": "开发者效率瑞士军刀", "query": "stars:8000..120000 developer-tools in:description,readme", "sort": "stars"},
+    {"topic": "跨平台硬件与外设交互", "query": "stars:4000..60000 hardware in:description", "sort": "stars"},
+    {"topic": "现代终端仿真器与 Shell", "query": "stars:7000..100000 terminal in:description,readme", "sort": "stars"},
+    {"topic": "数据备份与数据恢复", "query": "stars:5000..70000 backup tool in:description", "sort": "stars"},
+    {"topic": "PDF 处理与格式转换神兵", "query": "stars:6000..90000 pdf in:description", "sort": "stars"},
+    {"topic": "本地文件搜索与秒级定位", "query": "stars:8000..120000 search in:description,readme", "sort": "stars"},
+    {"topic": "网络调试与网络分析抓包", "query": "stars:5000..80000 network in:description", "sort": "stars"},
+    {"topic": "双链笔记与个人知识库", "query": "stars:7000..100000 note-taking in:description", "sort": "stars"},
+    {"topic": "新一代文件管理器", "query": "stars:6000..90000 file-manager in:description", "sort": "stars"},
+    {"topic": "剪贴板历史与生产力增强", "query": "stars:4000..60000 clipboard in:description", "sort": "stars"},
+    {"topic": "截图与屏幕录制神器", "query": "stars:6000..90000 screenshot in:description", "sort": "stars"},
+    {"topic": "数据库可视化与轻量客户端", "query": "stars:6000..90000 database client GUI in:description", "sort": "stars"},
+    {"topic": "Git 版本控制图形化神器", "query": "stars:7000..90000 git GUI in:description", "sort": "stars"},
+    {"topic": "局域网跨设备高速互传", "query": "stars:6000..80000 local transfer in:description,readme", "sort": "stars"},
+    {"topic": "密码管理与安全保险箱", "query": "stars:7000..100000 password manager in:description", "sort": "stars"},
+]
+
+LOCAL_CLASSIC_GEMS_FALLBACK = [
+    {"name": "localsend/localsend", "url": "https://github.com/localsend/localsend", "description": "开源跨平台局域网文件互传神器，免配置平替 AirDrop，手机电脑互传秒级直达。", "language": "Dart", "total_stars": "56000+", "topic": "跨平台局域网传输"},
+    {"name": "rustdesk/rustdesk", "url": "https://github.com/rustdesk/rustdesk", "description": "开源全功能远程桌面平替神器，支持自建中继服务器，安全极速无限制。", "language": "Rust", "total_stars": "78000+", "topic": "远程桌面协作"},
+    {"name": "yt-dlp/yt-dlp", "url": "https://github.com/yt-dlp/yt-dlp", "description": "全网最强大的音视频无损下载利器，支持全球上千家视频音频网站无水印解析下载。", "language": "Python", "total_stars": "89000+", "topic": "全网音视频提取"},
+    {"name": "excalidraw/excalidraw", "url": "https://github.com/excalidraw/excalidraw", "description": "手绘风白板绘图神器，支持多人协同、架构图手绘设计，纯净无广告。", "language": "TypeScript", "total_stars": "85000+", "topic": "手绘风白板设计"},
+    {"name": "obsproject/obs-studio", "url": "https://github.com/obsproject/obs-studio", "description": "全球顶尖的免费开源屏幕录制与直播推流工具，性能强大、插件生态极其繁荣。", "language": "C/C++", "total_stars": "62000+", "topic": "高清录屏与直播"},
+    {"name": "calibre-ebook/calibre", "url": "https://github.com/calibre-ebook/calibre", "description": "殿堂级电子书格式转换与书库管理工具，阅读排版与格式互转的一站式神器。", "language": "Python", "total_stars": "19000+", "topic": "电子书全能管理"},
+    {"name": "syncthing/syncthing", "url": "https://github.com/syncthing/syncthing", "description": "去中心化的连续文件同步工具，在多台电脑手机间安全同步文件夹，不经过第三方服务器。", "language": "Go", "total_stars": "67000+", "topic": "去中心化多端同步"},
+    {"name": "AppFlowy-IO/AppFlowy", "url": "https://github.com/AppFlowy-IO/AppFlowy", "description": "开源 Notion 平替神器，数据 100% 本地优先存储，隐私无忧，排版美观。", "language": "Flutter/Rust", "total_stars": "57000+", "topic": "本地知识工作台"},
+    {"name": "logseq/logseq", "url": "https://github.com/logseq/logseq", "description": "隐私优先的双链大纲笔记与知识图谱工具，纯本地 Markdown 存储，思维发散绝配。", "language": "Clojure", "total_stars": "33000+", "topic": "双链大纲知识库"},
+    {"name": "gorhill/uBlock", "url": "https://github.com/gorhill/uBlock", "description": "最高效的轻量级浏览器广告与隐私追踪拦截插件，超低内存占用，还网页一片清净。", "language": "JavaScript", "total_stars": "47000+", "topic": "网页纯净拦截"},
+    {"name": "keepassxreboot/keepassxc", "url": "https://github.com/keepassxreboot/keepassxc", "description": "开源本地加密密码管理器，无需依赖任何云端即可实现极高安全级别的密码与密钥管理。", "language": "C++", "total_stars": "24000+", "topic": "本地密码保险箱"},
+    {"name": "ShareX/ShareX", "url": "https://github.com/ShareX/ShareX", "description": "Windows 平台天花板级别的免费开源截图、录屏、OCR 与工作流自动化利器。", "language": "C#", "total_stars": "29000+", "topic": "全能截图与自动化"},
+    {"name": "HandBrake/HandBrake", "url": "https://github.com/HandBrake/HandBrake", "description": "开源跨平台的高性能视频格式转换与体积无损压缩工具，压制视频必备。", "language": "C", "total_stars": "16000+", "topic": "视频压制转换"},
+    {"name": "Genymobile/scrcpy", "url": "https://github.com/Genymobile/scrcpy", "description": "通过 USB 或无线将安卓手机屏幕超低延迟投屏到电脑并用键鼠控制，免 Root 神器。", "language": "C", "total_stars": "110000+", "topic": "安卓电脑同屏控制"},
+    {"name": "jgraph/drawio", "url": "https://github.com/jgraph/drawio", "description": "功能比肩 Visio 的专业流程图、UML 图与架构图绘制工具，完全免费无限制。", "language": "JavaScript", "total_stars": "43000+", "topic": "专业流程图架构图"},
+    {"name": "astral-sh/ruff", "url": "https://github.com/astral-sh/ruff", "description": "基于 Rust 编写的百倍速极速 Python Linter 与代码格式化工具，颠覆传统工具链。", "language": "Rust", "total_stars": "36000+", "topic": "新一代极速开发工具"},
+    {"name": "tiangolo/fastapi", "url": "https://github.com/tiangolo/fastapi", "description": "现代高性能 Python Web 框架，基于标准类型提示，自动生成交互式 API 文档。", "language": "Python", "total_stars": "81000+", "topic": "现代化高并发后端"},
+    {"name": "dbeaver/dbeaver", "url": "https://github.com/dbeaver/dbeaver", "description": "全功能开源通用数据库管理工具，支持 MySQL、PostgreSQL、SQLite 等近百种数据源。", "language": "Java", "total_stars": "40000+", "topic": "通用数据库管理"},
+    {"name": "motrixapp/motrix", "url": "https://github.com/motrixapp/motrix", "description": "高颜值全功能下载管理器，支持 HTTP、FTP、BT、磁力链接等多种协议，跨平台美观高效。", "language": "TypeScript", "total_stars": "45000+", "topic": "全能跨平台下载"},
+    {"name": "veler/DevToys", "url": "https://github.com/veler/DevToys", "description": "开发者的瑞士军刀桌面端，包含 JSON 格式化、正则测试、哈希计算等数十种日常工具。", "language": "C#", "total_stars": "24000+", "topic": "离线开发百宝箱"},
+    {"name": "AUTOMATIC1111/stable-diffusion-webui", "url": "https://github.com/AUTOMATIC1111/stable-diffusion-webui", "description": "经典 Stable Diffusion AI 绘画 Web 交互界面，功能极为完整丰富，生态插件无数。", "language": "Python", "total_stars": "145000+", "topic": "AI 本地图像创作"},
+    {"name": "ggerganov/llama.cpp", "url": "https://github.com/ggerganov/llama.cpp", "description": "纯 C/C++ 实现的大语言模型推理引擎，让轻薄本和普通电脑也能流畅本地运行开源大模型。", "language": "C++", "total_stars": "73000+", "topic": "大模型本地轻量推理"}
+]
+
+
+def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+    """
+    抓取板块三“每日经典宝藏项目”候选池：
+    1. 基于北京时间日期 YYYY-MM-DD 计算确定性哈希种子，从 32 个领域查询池中轮换抽取 2 个主题
+    2. 调用 GitHub Search API 检索高分殿堂级项目，过滤掉已在今日 Trending 中的项目
+    3. 挑选 6~8 个候选高分宝藏项目传给大模型做深度推荐
+    4. 自带 22+ 本地精选项目切片轮换兜底，防止 GitHub API 限流
+    """
+    print("\n[4/4] 正在检索【GitHub 每日经典宝藏/殿堂级项目】候选池...")
+    if exclude_names is None:
+        exclude_names = set()
+    else:
+        exclude_names = {n.lower() for n in exclude_names}
+
+    now_bj = datetime.now(BEIJING_TZ)
+    date_str = now_bj.strftime("%Y-%m-%d")
+    seed = int(hashlib.md5(date_str.encode("utf-8")).hexdigest()[:8], 16)
+
+    pool_len = len(CLASSIC_QUERY_POOL)
+    idx1 = seed % pool_len
+    idx2 = (seed // pool_len + 7) % pool_len
+    if idx2 == idx1:
+        idx2 = (idx1 + 1) % pool_len
+
+    selected_queries = [CLASSIC_QUERY_POOL[idx1], CLASSIC_QUERY_POOL[idx2]]
+    print(f"  🎯 今日宝藏探索主题: 1.【{selected_queries[0]['topic']}】 2.【{selected_queries[1]['topic']}】 (确定性日期种子: {seed})")
+
+    candidate_gems: List[Dict[str, Any]] = []
+    seen_repo_names = set()
+
+    for q_item in selected_queries:
+        topic_label = q_item["topic"]
+        q_text = q_item["query"]
+        encoded_q = urllib.parse.quote(q_text)
+        api_url = f"https://api.github.com/search/repositories?q={encoded_q}&sort={q_item['sort']}&order=desc&per_page=10"
+
+        resp = http_get(api_url)
+        if resp:
+            try:
+                data = resp.json()
+                for repo in data.get("items", [])[:8]:
+                    full_name = repo.get("full_name", "")
+                    fn_lower = full_name.lower()
+                    if not full_name or fn_lower in exclude_names or fn_lower in seen_repo_names:
+                        continue
+
+                    seen_repo_names.add(fn_lower)
+                    desc = repo.get("description") or "暂无项目描述"
+                    lang = repo.get("language") or "Unknown"
+                    stargazers = repo.get("stargazers_count", 0)
+
+                    candidate_gems.append({
+                        "name": full_name,
+                        "url": repo.get("html_url", f"https://github.com/{full_name}"),
+                        "description": desc,
+                        "language": lang,
+                        "total_stars": f"{stargazers:,}",
+                        "stars_today": "经典高分宝藏",
+                        "topic_category": topic_label
+                    })
+                    if len(candidate_gems) >= 8:
+                        break
+            except Exception as e:
+                print(f"  [警告] 解析宝藏搜索结果异常 ({topic_label}): {e}")
+
+        if len(candidate_gems) >= 8:
+            break
+
+    # 兜底补充逻辑：若因网络或 GitHub API 限流导致候选少于 4 个，从本地兜底池切片轮换补充
+    if len(candidate_gems) < 6:
+        print(f"  [宝藏池兜底机制] API 候选数量较少 ({len(candidate_gems)} 个)，启动本地精选殿堂级项目切片补充...")
+        fallback_len = len(LOCAL_CLASSIC_GEMS_FALLBACK)
+        start_offset = seed % fallback_len
+        for i in range(fallback_len):
+            fb_item = LOCAL_CLASSIC_GEMS_FALLBACK[(start_offset + i) % fallback_len]
+            fn_lower = fb_item["name"].lower()
+            if fn_lower not in exclude_names and fn_lower not in seen_repo_names:
+                seen_repo_names.add(fn_lower)
+                candidate_gems.append({
+                    "name": fb_item["name"],
+                    "url": fb_item["url"],
+                    "description": fb_item["description"],
+                    "language": fb_item["language"],
+                    "total_stars": fb_item["total_stars"],
+                    "stars_today": "经典高分宝藏",
+                    "topic_category": fb_item.get("topic", "精选神器")
+                })
+            if len(candidate_gems) >= 8:
+                break
+
+    print(f"  => 成功就绪 {len(candidate_gems)} 个高分经典宝藏候选项目供大模型精编")
+    return candidate_gems
+
+
+# 别名兼容
+collect_github_classic_gems = fetch_github_classic_gems
 
 
 # ==================== Gemini API 提炼模块 ====================
@@ -356,19 +526,24 @@ def get_candidate_models(client) -> List[str]:
 def build_digest_prompt(
     global_news: List[Dict[str, str]],
     ai_news: List[Dict[str, str]],
-    github_projects: List[Dict[str, Any]]
+    github_projects: List[Dict[str, Any]],
+    github_classic_gems: Optional[List[Dict[str, Any]]] = None
 ) -> str:
-    """构建供大模型 (DeepSeek / Gemini) 提炼的统一标准 Prompt"""
+    """构建供大模型 (Codex / DeepSeek / Gemini) 提炼的统一标准 Prompt"""
     now_bj = datetime.now(BEIJING_TZ)
     date_str = now_bj.strftime("%Y年%m月%d日")
     weekday_map = {0: "星期一", 1: "星期二", 2: "星期三", 3: "星期四", 4: "星期五", 5: "星期六", 6: "星期日"}
     weekday_str = weekday_map[now_bj.weekday()]
 
+    if github_classic_gems is None:
+        github_classic_gems = []
+
     context_data = {
         "report_date": f"{date_str} {weekday_str} (北京时间)",
         "raw_global_news": global_news[:14],
-        "raw_ai_news": ai_news[:14],
-        "raw_github_trending": github_projects[:10]
+        "raw_ai_news": ai_news[:16],
+        "raw_github_trending": github_projects[:10],
+        "raw_github_classic_gems": github_classic_gems[:8]
     }
     context_json = json.dumps(context_data, ensure_ascii=False, indent=2)
 
@@ -390,28 +565,37 @@ def build_digest_prompt(
 - **【严禁废话与免责声明】**：严禁输出诸如“编读说明”、“本报依据所提供的数据底座编选”、“未进行实时联网复核”等任何元说明或免责声明！导语之后直接进入【🌍 板块一：全球时事】。
 
 #### 🌍 板块一：全球时事（重深度、前因后果与多方影响）
-- 精选过去 24 小时最关键的 **4~6 条**全球重大政经、科技或地缘热点。
+- 精选过去 24 小时最关键的 **4~5 条**全球重大政经、科技或地缘热点。
 - 绝不是简单一句话新闻列表！每条内容必须包含：
   - **核心事件**：事实准确，时间、地点、主体明确。
   - **前因后果与脉络**：为什么会发生？背后有什么历史背景、经济博弈或政策动机？
   - **多方视角与深层影响**：各方表态如何？对全球经济、产业链格局或普通大众有何长远影响？
   - **权威来源**：在末尾必须附带可点击的 Markdown 链接，如 `[🔗 来源：BBC](链接)`。
 
-#### 🤖 板块二：指定 AI 核心追踪（OpenAI / Google / Anthropic）
-- 必须重点聚焦这三巨头：
-  1. **OpenAI (GPT / Codex)**：近期重磅更新、模型能力、API 变动或生态战况。
-  2. **Google (Gemini / AI Studio / Antigravity)**：Google 最前沿模型发布、IDE/Agent 进展与开发技巧。
-  3. **Anthropic (Claude / Claude Code)**：Claude 最新版本能力、代码工具或行业实践。
-- **🎁 【今日福利与优惠活动】专项子栏目（重点！）**：
-  - 检索核实三大家或主流 AI 平台今天是否有最新的免费额度发放、学生认证优惠、API 赠金、限时限免或高性价比平替白嫖方式。
-  - **铁律**：如果今日确实无新增的官方福利变动，请如实标明“今日暂无新增官方福利变动”，严禁凭空捏造虚假活动。
+#### 🤖 板块二：AI 核心御三家 & 英伟达/特斯拉深度追踪
+- **【彻底移除原福利专栏】**：坚决不输出任何“今日福利/优惠活动/白嫖羊毛”内容，全力聚焦前沿科技攻防与产业风云！
+- 必须严格分为以下两个子部分输出：
+  1. **🧠 AI 大模型与工具御三家（GPT/Codex、Gemini/Antigravity、Claude）**：
+     - 提炼 OpenAI、Google、Anthropic 三家最新的模型发布、能力升级、API 迭代、IDE/Agent 生态及核心战略进展。
+  2. **⚡ 算力与具身智能双巨头（英伟达 NVIDIA & 特斯拉 Tesla）**：
+     - **英伟达 (NVIDIA)**：老黄最新动向、AI 算力芯片（Blackwell/Rubin）、CUDA 生态、网络互联架构与市场催化剂。
+     - **特斯拉 (Tesla)**：FSD 自动驾驶落地、Optimus 仿生机器人、Robotaxi 车队、工程突破与战略动作。
+     - 每条均附带可点击的来源链接，如 `[🔗 查看原文](链接)`。
 
-#### 🔥 板块三：GitHub 热门开源项目（通俗大白话场景化解读）
-- 精选 **5~6 个**项目（优先 AI 应用、数码/生产力工具，以及近期星标暴涨的爆款黑马）。
-- 每个项目必须具备以下排版：
-  - `### 序号. [项目名](链接) 🌟 今日 +新增Stars / 总Stars | 语言`
-  - **💡 这项目到底是干啥的？**：必须用通俗直观的大白话打比方或场景化描述（坚决杜绝生硬技术黑话堆砌，非技术读者也能一眼看懂）。
-  - **🎯 解决了什么痛点 / 好玩在哪？**：说明对开发者或普通人的实际用途、好玩点或替代了什么昂贵工具。
+#### 🔥 板块三：GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）
+- 必须严格分为以下两个子部分输出：
+  1. **📈 今日飙升热榜（精选 4~5 个近期暴涨的新锐项目）**：
+     - 从 `raw_github_trending` 中挑选最惊艳的 4~5 个项目。
+     - 格式规范：
+       `### 序号. [项目名](链接) 🌟 今日 +新增Stars / 总Stars | 语言`
+       - **💡 这项目到底是干啥的？**：通俗直观的大白话打比方或生活场景解读（坚决杜绝生硬技术黑话堆砌，非技术读者也能秒懂）。
+       - **🎯 解决了什么痛点 / 好玩在哪？**：说明对普通人或开发者的实用价值、好玩点，或能平替什么收费工具。
+  2. **💎 每日宝藏 / 殿堂级项目推荐（固定精选 2 个，类别不限）**：
+     - 从 `raw_github_classic_gems` 中精选 2 个最实用、最好玩或最经典的宝藏/神器项目进行深度推荐！
+     - 格式规范：
+       `### 🌟 宝藏推荐 序号：[项目名](链接) 🏆 总Stars | 语言`
+       - **💡 这是个什么神器？**：用形象的大白话打比方，通俗生动地讲透它的本质功能，让外行也能眼前一亮。
+       - **🎯 为什么强烈推荐 / 你能拿它干啥？**：详细阐述它能平替什么收费商业软件、解决什么日常/工作中的烦人痛点，或带来怎样让人惊呼的超爽体验。
 
 ---
 
@@ -419,7 +603,7 @@ def build_digest_prompt(
 1. 语言：通俗、生动、凝练的简体中文。
 2. 格式：清晰优雅的 Markdown 格式（使用 `#`, `##`, `###`, `**加粗**`, `- 列表`, `>` 引用块）。
 3. 避免在微信中渲染效果差的复杂 HTML 语法或多列宽表格，以引用卡片和列表为主，确保手机小屏沉浸阅读。
-4. 【完整性铁律】：必须完整输出全部三大板块（板块一：全球时事、板块二：指定 AI 核心追踪 + 福利专栏、板块三：GitHub 热门开源），切勿写得冗长导致后半部分被截断！每条要闻/项目控制在 150~200 字，精准提炼。
+4. 【完整性铁律】：必须完整输出全部三大板块（板块一：全球时事、板块二：AI 御三家 + 英伟达/特斯拉、板块三：GitHub 飙升热榜 + 每日宝藏推荐），切勿写得冗长导致后半部分被截断！每条要闻/项目控制在 150~200 字，精准提炼。
 5. 【纯净内容准则】：坚决禁止输出任何编者说明、数据底座局限性或未联网说明，导语之后直接切入板块一正文。
 """
     return prompt
@@ -429,6 +613,7 @@ def generate_digest_with_codex(
     global_news: List[Dict[str, str]],
     ai_news: List[Dict[str, str]],
     github_projects: List[Dict[str, Any]],
+    github_classic_gems: Optional[List[Dict[str, Any]]],
     api_key: str
 ) -> str:
     """
@@ -465,7 +650,7 @@ def generate_digest_with_codex(
             endpoints.remove(custom_base_url)
         endpoints.insert(0, custom_base_url)
 
-    prompt = build_digest_prompt(global_news, ai_news, github_projects)
+    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems)
 
     payload = {
         "model": codex_model,
@@ -573,6 +758,7 @@ def generate_digest_with_deepseek(
     global_news: List[Dict[str, str]],
     ai_news: List[Dict[str, str]],
     github_projects: List[Dict[str, Any]],
+    github_classic_gems: Optional[List[Dict[str, Any]]],
     api_key: str
 ) -> str:
     """调用 DeepSeek 官方 API (或 OpenAI 兼容格式接口) 生成高质量早报"""
@@ -586,7 +772,7 @@ def generate_digest_with_deepseek(
         "User-Agent": USER_AGENT
     }
 
-    prompt = build_digest_prompt(global_news, ai_news, github_projects)
+    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems)
 
     payload = {
         "model": model,
@@ -629,7 +815,8 @@ def generate_digest_with_deepseek(
 def generate_digest_with_gemini(
     global_news: List[Dict[str, str]],
     ai_news: List[Dict[str, str]],
-    github_projects: List[Dict[str, Any]]
+    github_projects: List[Dict[str, Any]],
+    github_classic_gems: Optional[List[Dict[str, Any]]] = None
 ) -> str:
     """调用 Google Gemini 最新可用模型，配合 Google Search Grounding 深度提炼生成早报"""
     api_key = os.getenv("GEMINI_API_KEY")
@@ -643,7 +830,7 @@ def generate_digest_with_gemini(
 
     # 动态探测候选模型列表
     candidate_models = get_candidate_models(client)
-    prompt = build_digest_prompt(global_news, ai_news, github_projects)
+    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems)
 
     # 尝试调用策略：
     # 1. 优先按最新候选模型列表开启 Google Search Grounding (联网核实)
@@ -687,7 +874,8 @@ def generate_digest_with_gemini(
 def generate_digest(
     global_news: List[Dict[str, str]],
     ai_news: List[Dict[str, str]],
-    github_projects: List[Dict[str, Any]]
+    github_projects: List[Dict[str, Any]],
+    github_classic_gems: Optional[List[Dict[str, Any]]] = None
 ) -> str:
     """
     智能大模型生成中枢：
@@ -728,7 +916,7 @@ def generate_digest(
         effort_level = (os.getenv("CODEX_EFFORT") or "medium").strip().lower()
         print(f"\n🧠 调度大模型引擎: Codex API ({model_name} + {effort_level} 深度思考)...")
         try:
-            return generate_digest_with_codex(global_news, ai_news, github_projects, codex_key)
+            return generate_digest_with_codex(global_news, ai_news, github_projects, github_classic_gems, codex_key)
         except Exception as e:
             err = f"Codex API 失败: {e}"
             errors.append(err)
@@ -742,7 +930,7 @@ def generate_digest(
         model_name = (os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro").strip()
         print(f"\n🧠 调度大模型引擎: DeepSeek ({model_name})...")
         try:
-            return generate_digest_with_deepseek(global_news, ai_news, github_projects, deepseek_key)
+            return generate_digest_with_deepseek(global_news, ai_news, github_projects, github_classic_gems, deepseek_key)
         except Exception as e:
             err = f"DeepSeek API 失败: {e}"
             errors.append(err)
@@ -755,7 +943,7 @@ def generate_digest(
             return None
         print("\n🧠 调度备用大模型引擎: Google Gemini (动态模型)...")
         try:
-            return generate_digest_with_gemini(global_news, ai_news, github_projects)
+            return generate_digest_with_gemini(global_news, ai_news, github_projects, github_classic_gems)
         except Exception as e:
             err = f"Gemini API 失败: {e}"
             errors.append(err)
@@ -776,13 +964,14 @@ def generate_digest(
     # 终极兜底：本地高质量数据底座应急早报生成
     combined_reason = " | ".join(errors)
     print(f"\n⚠️ [自动容灾] 所有大模型引擎均未响应，启用本地多源数据底座应急早报生成引擎 (原因: {combined_reason[:150]})...")
-    return generate_fallback_digest(global_news, ai_news, github_projects, reason=combined_reason)
+    return generate_fallback_digest(global_news, ai_news, github_projects, github_classic_gems, reason=combined_reason)
 
 
 def generate_fallback_digest(
     global_news: List[Dict[str, str]],
     ai_news: List[Dict[str, str]],
     github_projects: List[Dict[str, Any]],
+    github_classic_gems: Optional[List[Dict[str, Any]]] = None,
     reason: str = ""
 ) -> str:
     """当所有大模型 API 遭遇网络故障或限流时，依托本地采集的高质量多源数据底座生成应急早报"""
@@ -791,10 +980,13 @@ def generate_fallback_digest(
     weekday_map = {0: "星期一", 1: "星期二", 2: "星期三", 3: "星期四", 4: "星期五", 5: "星期六", 6: "星期日"}
     weekday_str = weekday_map[now_bj.weekday()]
 
+    if github_classic_gems is None:
+        github_classic_gems = []
+
     lines = [
         f"# 🌅 每日 AI & 全球资讯早报 | {date_str} {weekday_str}",
         "",
-        "> 💡 **今日早报速览**：多源实时资讯已采集就绪，为您精选全球重大时事、AI 巨头最新动向与 GitHub 热门开源黑马项目。",
+        "> 💡 **今日早报速览**：多源实时资讯已采集就绪，为您精选全球重大时事、AI 御三家与算力具身智能双巨头动向，以及 GitHub 热门开源黑马与经典宝藏神器。",
         ""
     ]
 
@@ -809,40 +1001,68 @@ def generate_fallback_digest(
             ""
         ])
 
-
     lines.extend([
-        "## 🌍 板块一：全球时事（深度精选）",
+        "## 🌍 板块一：全球时事（重深度、前因后果与多方影响）",
         ""
     ])
     for i, item in enumerate(global_news[:5], 1):
         lines.append(f"### {i}. [{item['title']}]({item['link']})")
-        lines.append(f"- **核心要闻**：{item['summary']}")
+        lines.append(f"- **核心事件**：{item['summary']}")
         lines.append(f"- **权威来源**：[🔗 来源：{item['source']}]({item['link']})")
         lines.append("")
 
     lines.extend([
-        "## 🤖 板块二：指定 AI 核心追踪（OpenAI / Google / Anthropic）",
+        "## 🤖 板块二：AI 核心御三家 & 英伟达/特斯拉深度追踪",
+        "",
+        "### 🧠 AI 大模型与工具御三家（GPT/Codex、Gemini、Claude）",
         ""
     ])
-    for i, item in enumerate(ai_news[:5], 1):
-        lines.append(f"### {i}. [{item['title']}]({item['link']})")
+    ai_trio_items = [it for it in ai_news if any(k in it['title'].lower() for k in ['openai', 'gpt', 'codex', 'gemini', 'google', 'claude', 'anthropic'])]
+    if not ai_trio_items:
+        ai_trio_items = ai_news[:3]
+    for i, item in enumerate(ai_trio_items[:3], 1):
+        lines.append(f"- **{item['title']}**")
         if item.get("summary"):
-            lines.append(f"- **动态摘要**：{item['summary']}")
-        lines.append(f"- **信息来源**：[🔗 查看原文]({item['link']})")
+            lines.append(f"  - 动态脉络：{item['summary']}")
+        lines.append(f"  - 详情链接：[🔗 查看原文]({item['link']})")
         lines.append("")
 
     lines.extend([
-        "#### 🎁 【今日福利与优惠活动】",
-        "> 📢 今日暂无新增官方重大免费福利变动。日常推荐关注 Google AI Studio 免费层级或 GitHub 学生开发者礼包。",
-        "",
-        "## 🔥 板块三：GitHub 热门开源项目（通俗大白话解读）",
+        "### ⚡ 算力与具身智能双巨头（英伟达 NVIDIA & 特斯拉 Tesla）",
         ""
     ])
-    for i, repo in enumerate(github_projects[:5], 1):
+    nv_tsla_items = [it for it in ai_news if any(k in it['title'].lower() for k in ['nvidia', '英伟达', 'huang', '黄仁勋', 'blackwell', 'cuda', 'tesla', '特斯拉', 'fsd', 'optimus', 'musk', '马斯克'])]
+    if not nv_tsla_items:
+        nv_tsla_items = ai_news[3:6] if len(ai_news) > 3 else ai_news
+    for i, item in enumerate(nv_tsla_items[:3], 1):
+        lines.append(f"- **{item['title']}**")
+        if item.get("summary"):
+            lines.append(f"  - 深度剖析：{item['summary']}")
+        lines.append(f"  - 权威来源：[🔗 查看原文]({item['link']})")
+        lines.append("")
+
+    lines.extend([
+        "## 🔥 板块三：GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）",
+        "",
+        "### 📈 今日飙升热榜（新锐精选）",
+        ""
+    ])
+    for i, repo in enumerate(github_projects[:4], 1):
         stars_info = f"🌟 今日 {repo['stars_today']} / 总 Star {repo['total_stars']}"
         lines.append(f"### {i}. [{repo['name']}]({repo['url']}) {stars_info} | {repo['language']}")
         lines.append(f"- **💡 这项目到底是干啥的？**：{repo['description']}")
-        lines.append(f"- **🎯 解决痛点与亮点**：开箱即用，帮助开发者与普通用户提升日常效率、降低工具成本。")
+        lines.append(f"- **🎯 解决痛点与好玩在哪？**：近期爆发式增长，开箱即用，提升日常工作流与开发生产力。")
+        lines.append("")
+
+    lines.extend([
+        "### 💎 每日宝藏 / 殿堂级项目推荐（固定精选 2 个）",
+        ""
+    ])
+    classic_to_show = github_classic_gems[:2] if len(github_classic_gems) >= 2 else LOCAL_CLASSIC_GEMS_FALLBACK[:2]
+    for i, gem in enumerate(classic_to_show, 1):
+        lines.append(f"### 🌟 宝藏推荐 {i}：[{gem['name']}]({gem['url']}) 🏆 总 Stars: {gem.get('total_stars', '高分神作')} | {gem.get('language', 'Universal')}")
+        lines.append(f"- **💡 这是个什么神器？**：{gem.get('description', '')}")
+        lines.append(f"- **🎯 为什么强烈推荐 / 你能拿它干啥？**：经久不衰的殿堂级高星开源利器，功能强大、稳定可靠，日常装机必备。")
         lines.append("")
 
     return "\n".join(lines)
@@ -1207,13 +1427,15 @@ def main():
     global_news = collect_global_news()
     ai_news = collect_ai_news()
     github_trending = collect_github_trending()
+    trending_names = {p.get("name", "").lower() for p in github_trending}
+    github_classic_gems = fetch_github_classic_gems(exclude_names=trending_names)
 
-    total_scraped = len(global_news) + len(ai_news) + len(github_trending)
-    print(f"\n📊 数据采集完成，总共获得 {total_scraped} 条全网最新热点数据。")
+    total_scraped = len(global_news) + len(ai_news) + len(github_trending) + len(github_classic_gems)
+    print(f"\n📊 数据采集完成，总共获得 {total_scraped} 条全网最新热点与经典宝藏数据底座。")
 
-    # 2. 大模型智能提炼 (支持 DeepSeek / Gemini / 本地应急兜底)
+    # 2. 大模型智能提炼 (支持 Codex / DeepSeek / Gemini / 本地应急兜底)
     print("\n🧠 启动大模型智能提炼与分析引擎...")
-    digest_content = generate_digest(global_news, ai_news, github_trending)
+    digest_content = generate_digest(global_news, ai_news, github_trending, github_classic_gems)
 
     # 3. 多渠道推送分发与本地落地
     dispatch_notifications(digest_content)
