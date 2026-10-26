@@ -2,10 +2,9 @@ name: Daily AI & Global Digest
 
 on:
   schedule:
-    # DeepSeek 官方半价空闲时段为北京时间 00:30 ~ 08:30（立享 5 折）。
-    # 设置在 UTC 00:15 (北京时间 08:15) 启动，算上 GitHub 队列缓冲，
-    # 刚好在 08:20~08:28 完成半价调用并推送到邮箱！(若想改回 08:55，将 15 0 改为 55 0 即可)
-    - cron: '15 0 * * *'
+    # GitHub Actions 定时调度 (UTC 01:07 = 北京时间 09:07)
+    # 避开 UTC 00:00~01:00 全球整点高峰拥堵队列，确保早报在 09:10~09:15 稳妥准时送达！
+    - cron: '7 1 * * *'
   workflow_dispatch: # 支持在 GitHub 仓库 Actions 页面手动点击 "Run workflow" 随时测试
     inputs:
       primary_engine:
