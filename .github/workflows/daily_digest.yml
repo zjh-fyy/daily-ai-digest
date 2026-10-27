@@ -2,9 +2,9 @@ name: Daily AI & Global Digest
 
 on:
   schedule:
-    # GitHub Actions 定时调度 (UTC 01:07 = 北京时间 09:07)
-    # 避开 UTC 00:00~01:00 全球整点高峰拥堵队列，确保早报在 09:10~09:15 稳妥准时送达！
-    - cron: '7 1 * * *'
+    # GitHub Actions 定时调度 (UTC 20:07 = 北京时间 04:07)
+    # 提前至凌晨触发，应对 GitHub Actions 约 4.5~5 小时的排队延迟，确保在早上 08:30~09:15 稳妥准时送达！
+    - cron: '7 20 * * *'
   workflow_dispatch: # 支持在 GitHub 仓库 Actions 页面手动点击 "Run workflow" 随时测试
     inputs:
       primary_engine:
