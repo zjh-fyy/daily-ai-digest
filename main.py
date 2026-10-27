@@ -684,7 +684,11 @@ def generate_digest_with_codex(
             print(f"  🚀 正在向 Codex API 发送请求 (模型: {codex_model}, 思考深度: {codex_effort}, {tools_desc}, 节点: {b_url}, 尝试: {retry_idx}/{max_node_retries}) ...")
             t0 = time.time()
             try:
-                resp = requests.post(endpoint, headers=headers, json=payload, timeout=180)
+                try:
+                    resp = requests.post(endpoint, headers=headers, json=payload, timeout=180)
+                except requests.exceptions.ProxyError:
+                    print(f"  [代理自愈] 本地代理异常，自动切换为直连请求节点 {b_url} ...")
+                    resp = requests.post(endpoint, headers=headers, json=payload, proxies={"http": None, "https": None}, timeout=180)
                 elapsed = time.time() - t0
                 if resp.status_code == 200:
                     data = resp.json()
@@ -779,7 +783,13 @@ def generate_digest_with_deepseek(
         "messages": [
             {
                 "role": "system",
-                "content": "你是一位殿堂级科技主编与资深国际政治经济观察家。请基于提供的数据底座，为微信移动端读者精编一份结构严谨、前因后果清晰、大白话解读开源项目、兼具深度与可读性的每日 AI & 全球资讯早报。请务必完整输出三大板块，切勿遗漏。"
+                "content": (
+                    "你是一位殿堂级科技主编与资深国际政治经济观察家。请基于提供的数据底座，"
+                    "为微信移动端读者精编一份结构严谨、前因后果清晰、大白话解读开源项目、兼具深度与可读性的每日 AI & 全球资讯早报。"
+                    "【完整性铁律】：你必须按顺序完整撰写并输出全部三大板块："
+                    "1.【🌍 板块一：全球时事】；2.【🤖 板块二：AI 核心御三家 & 英伟达/特斯拉深度追踪】；3.【🔥 板块三：GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）】。"
+                    "严禁中途截断，三大板块缺一不可！"
+                )
             },
             {
                 "role": "user",
@@ -792,7 +802,11 @@ def generate_digest_with_deepseek(
 
     print(f"  🚀 正在向 DeepSeek API 发送生成请求 (模型: {model}, 接口: {url}, 超时设定: 240s) ...")
     t0 = time.time()
-    resp = requests.post(url, headers=headers, json=payload, timeout=240)
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=240)
+    except requests.exceptions.ProxyError:
+        print(f"  [代理自愈] 本地代理异常，自动切换为直连请求 DeepSeek API ...")
+        resp = requests.post(url, headers=headers, json=payload, proxies={"http": None, "https": None}, timeout=240)
     elapsed = time.time() - t0
     if resp.status_code == 200:
         data = resp.json()
