@@ -981,7 +981,7 @@ def generate_digest(
     codex_key = (os.getenv("CODEX_API_KEY") or "").strip()
     deepseek_key = (os.getenv("DEEPSEEK_API_KEY") or "").strip()
     gemini_key = (os.getenv("GEMINI_API_KEY") or "").strip()
-    primary_engine = (os.getenv("PRIMARY_ENGINE") or "codex").strip().lower()
+    primary_engine = (os.getenv("PRIMARY_ENGINE") or "local").strip().lower()
 
     # 智能防呆识别：如果用户将 sk-azx-... 的 Codex Key 误填在其他变量中
     if not codex_key:
@@ -1057,12 +1057,10 @@ def generate_digest(
             return None
 
     # 根据 primary_engine 确定调用顺序
-    if primary_engine == "local":
-        order = [try_local, try_codex, try_deepseek, try_gemini]
-    elif primary_engine == "deepseek":
-        order = [try_deepseek, try_codex, try_gemini]
+    if primary_engine == "codex":
+        order = [try_codex, try_local, try_gemini]
     else:
-        order = [try_codex, try_deepseek, try_gemini]
+        order = [try_local, try_codex, try_gemini]
 
     for engine_fn in order:
         result = engine_fn()
