@@ -44,6 +44,23 @@ load_dotenv()
 
 # ==================== 全局配置 ====================
 BEIJING_TZ = timezone(timedelta(hours=8))
+PREBUILT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prebuilt")
+
+
+def load_prebuilt_digest(date_str: str) -> Optional[str]:
+    path = os.path.join(PREBUILT_DIR, f"{date_str}.md")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read().strip()
+        return text if len(text) >= 800 else None
+    except OSError:
+        return None
+
+
+def report_now() -> datetime:
+    """早报署名日期；预生成模式下通过 REPORT_DATE_OFFSET_DAYS=1 写明天的日期"""
+    offset = int((os.getenv("REPORT_DATE_OFFSET_DAYS") or "0").strip() or 0)
+    return datetime.now(BEIJING_TZ) + timedelta(days=offset)
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -530,7 +547,7 @@ def build_digest_prompt(
     github_classic_gems: Optional[List[Dict[str, Any]]] = None
 ) -> str:
     """构建供大模型 (Codex / DeepSeek / Gemini) 提炼的统一标准 Prompt"""
-    now_bj = datetime.now(BEIJING_TZ)
+    now_bj = report_now()
     date_str = now_bj.strftime("%Y年%m月%d日")
     weekday_map = {0: "星期一", 1: "星期二", 2: "星期三", 3: "星期四", 4: "星期五", 5: "星期六", 6: "星期日"}
     weekday_str = weekday_map[now_bj.weekday()]
@@ -663,6 +680,7 @@ def generate_digest_with_codex(
         "reasoning": {
             "effort": codex_effort
         },
+        "stream": True,
         "tools": [
             {"type": "web_search"}
         ]
@@ -671,7 +689,7 @@ def generate_digest_with_codex(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "Accept": "application/json",
+        "Accept": "text/event-stream",
         "User-Agent": USER_AGENT
     }
 
@@ -685,13 +703,34 @@ def generate_digest_with_codex(
             t0 = time.time()
             try:
                 try:
-                    resp = requests.post(endpoint, headers=headers, json=payload, timeout=180)
+                    resp = requests.post(endpoint, headers=headers, json=payload, timeout=(15, 300), stream=True)
                 except requests.exceptions.ProxyError:
                     print(f"  [代理自愈] 本地代理异常，自动切换为直连请求节点 {b_url} ...")
-                    resp = requests.post(endpoint, headers=headers, json=payload, proxies={"http": None, "https": None}, timeout=180)
-                elapsed = time.time() - t0
+                    resp = requests.post(endpoint, headers=headers, json=payload, proxies={"http": None, "https": None}, timeout=(15, 300), stream=True)
                 if resp.status_code == 200:
-                    data = resp.json()
+                    # 流式 SSE 读取：持续有数据返回，避免 Cloudflare 100s 无响应触发 524
+                    data = None
+                    delta_parts = []
+                    for raw in resp.iter_lines(decode_unicode=False):
+                        if not raw or not raw.startswith(b"data:"):
+                            continue
+                        chunk = raw[5:].strip()
+                        if not chunk or chunk == b"[DONE]":
+                            continue
+                        try:
+                            ev = json.loads(chunk.decode("utf-8"))
+                        except Exception:
+                            continue
+                        ev_type = ev.get("type", "")
+                        if ev_type == "response.output_text.delta":
+                            delta_parts.append(ev.get("delta", ""))
+                        elif ev_type in ("response.completed", "response.incomplete"):
+                            data = ev.get("response", {})
+                        elif ev_type in ("response.failed", "error"):
+                            raise RuntimeError(f"Codex 流式返回错误: {str(ev)[:250]}")
+                    elapsed = time.time() - t0
+                    if data is None:
+                        data = {}
                     output_items = data.get("output", [])
                     text_parts = []
                     for item in output_items:
@@ -700,7 +739,7 @@ def generate_digest_with_codex(
                                 if c.get("type") == "output_text":
                                     text_parts.append(c.get("text", ""))
 
-                    final_text = "".join(text_parts).strip()
+                    final_text = "".join(text_parts).strip() or "".join(delta_parts).strip()
                     if not final_text:
                         raise RuntimeError("Codex API 返回内容为空")
 
@@ -824,6 +863,46 @@ def generate_digest_with_deepseek(
         err_msg = f"HTTP {resp.status_code}: {resp.text[:300]}"
         raise RuntimeError(err_msg)
 
+
+
+def generate_digest_with_local(
+    global_news: List[Dict[str, str]],
+    ai_news: List[Dict[str, str]],
+    github_projects: List[Dict[str, Any]],
+    github_classic_gems: Optional[List[Dict[str, Any]]],
+    api_key: str
+) -> str:
+    """调用本机 Antigravity 网关 (OpenAI 兼容, Gemini 3.8 Flash)，仅在本机开机时可用"""
+    base_url = (os.getenv("LOCAL_LLM_BASE_URL") or "http://127.0.0.1:8317/v1").strip().rstrip("/")
+    model = (os.getenv("LOCAL_LLM_MODEL") or "gemini-3.8-flash-high").strip()
+    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems)
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": (
+                "你是一位殿堂级科技主编与资深国际政治经济观察家。请基于提供的数据底座，"
+                "为移动端读者精编一份结构严谨、前因后果清晰、大白话解读开源项目、兼具深度与可读性的每日 AI & 全球资讯早报。"
+                "【完整性铁律】：必须按顺序完整输出三大板块：1.全球时事；2.AI 核心御三家 & 英伟达/特斯拉深度追踪；"
+                "3.GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）。严禁截断、严禁输出任何免责声明。"
+            )},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.5,
+        "max_tokens": 16384
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    print(f"  🚀 正在向本地网关发送生成请求 (模型: {model}, 接口: {base_url}) ...")
+    t0 = time.time()
+    resp = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload,
+                         proxies={"http": None, "https": None}, timeout=(10, 600))
+    if resp.status_code != 200:
+        raise RuntimeError(f"本地网关 HTTP {resp.status_code}: {resp.text[:300]}")
+    choices = resp.json().get("choices", [])
+    content = (choices[0].get("message", {}).get("content") or "").strip() if choices else ""
+    if len(content) < 800:
+        raise RuntimeError(f"本地网关返回内容过短 ({len(content)} 字符)")
+    print(f"  🎉 本地网关生成成功！耗时: {time.time() - t0:.2f}s, 字符数: {len(content)}")
+    return content
 
 
 def generate_digest_with_gemini(
@@ -964,8 +1043,23 @@ def generate_digest(
             print(f"  [降级触发] {err}，启用本地应急提炼引擎...")
             return None
 
+    def try_local() -> Optional[str]:
+        local_key = (os.getenv("LOCAL_LLM_API_KEY") or "").strip()
+        if not local_key:
+            return None
+        print("\n🧠 调度大模型引擎: 本地网关 (Gemini 3.8 Flash)...")
+        try:
+            return generate_digest_with_local(global_news, ai_news, github_projects, github_classic_gems, local_key)
+        except Exception as e:
+            err = f"本地网关失败: {e}"
+            errors.append(err)
+            print(f"  [降级触发] {err}，自动切换至下一备用引擎...")
+            return None
+
     # 根据 primary_engine 确定调用顺序
-    if primary_engine == "deepseek":
+    if primary_engine == "local":
+        order = [try_local, try_codex, try_deepseek, try_gemini]
+    elif primary_engine == "deepseek":
         order = [try_deepseek, try_codex, try_gemini]
     else:
         order = [try_codex, try_deepseek, try_gemini]
@@ -989,7 +1083,7 @@ def generate_fallback_digest(
     reason: str = ""
 ) -> str:
     """当所有大模型 API 遭遇网络故障或限流时，依托本地采集的高质量多源数据底座生成应急早报"""
-    now_bj = datetime.now(BEIJING_TZ)
+    now_bj = report_now()
     date_str = now_bj.strftime("%Y年%m月%d日")
     weekday_map = {0: "星期一", 1: "星期二", 2: "星期三", 3: "星期四", 4: "星期五", 5: "星期六", 6: "星期日"}
     weekday_str = weekday_map[now_bj.weekday()]
@@ -1437,6 +1531,16 @@ def main():
     print(f"⏰ 当前北京时间: {now_bj.strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
 
+    # 预生成模式：本机夜间生成明天的早报并落盘，不推送；云端定时任务读取后发送
+    prebuild = (os.getenv("PREBUILD_MODE") or "").strip() == "1"
+    if not prebuild:
+        prebuilt = load_prebuilt_digest(now_bj.strftime("%Y-%m-%d"))
+        if prebuilt:
+            print(f"\n📦 发现今日预生成早报 ({len(prebuilt)} 字符)，直接推送，跳过大模型。")
+            dispatch_notifications(prebuilt)
+            print("\n🎉 今日早报全流程顺利执行完毕！")
+            return
+
     # 1. 数据采集
     global_news = collect_global_news()
     ai_news = collect_ai_news()
@@ -1450,6 +1554,18 @@ def main():
     # 2. 大模型智能提炼 (支持 Codex / DeepSeek / Gemini / 本地应急兜底)
     print("\n🧠 启动大模型智能提炼与分析引擎...")
     digest_content = generate_digest(global_news, ai_news, github_trending, github_classic_gems)
+
+    if prebuild:
+        target = report_now().strftime("%Y-%m-%d")
+        if "【大模型接口提示】" in digest_content or "大模型接口提示" in digest_content[:600]:
+            print("\n❌ 预生成失败：大模型未返回有效内容，不落盘（避免云端误用兜底稿）。")
+            sys.exit(1)
+        os.makedirs(PREBUILT_DIR, exist_ok=True)
+        path = os.path.join(PREBUILT_DIR, f"{target}.md")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(digest_content)
+        print(f"\n📦 已预生成 {target} 早报: {path} ({len(digest_content)} 字符)")
+        return
 
     # 3. 多渠道推送分发与本地落地
     dispatch_notifications(digest_content)
