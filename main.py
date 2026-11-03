@@ -905,6 +905,84 @@ def generate_digest_with_local(
     return content
 
 
+def generate_digest_with_aizex(
+    global_news: List[Dict[str, str]],
+    ai_news: List[Dict[str, str]],
+    github_projects: List[Dict[str, Any]],
+    github_classic_gems: Optional[List[Dict[str, Any]]],
+    api_key: str
+) -> str:
+    """调用 aizex gpt-6.1-terra，使用 /v1/responses 流式 SSE + high 深度思考，作为云端备用引擎"""
+    base_url = (os.getenv("AIZEX_BASE_URL") or "https://ca.memofun.net/v1").strip().rstrip("/")
+    model = (os.getenv("AIZEX_MODEL") or "gpt-6.1-terra").strip()
+    effort = (os.getenv("AIZEX_EFFORT") or "high").strip().lower()
+    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems)
+
+    payload = {
+        "model": model,
+        "input": prompt,
+        "instructions": (
+            "你是一位殿堂级科技主编与资深国际政治经济观察家。请基于提供的数据底座，"
+            "为移动端读者精编一份结构严谨、前因后果清晰、大白话解读开源项目、兼具深度与可读性的每日 AI & 全球资讯早报。"
+            "请务必完整输出三大板块，切勿遗漏。严禁输出任何关于未联网或数据底座局限性的免责声明。"
+        ),
+        "reasoning": {"effort": effort},
+        "stream": True,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "User-Agent": USER_AGENT,
+    }
+    endpoint = f"{base_url}/responses"
+    print(f"  🚀 正在向 aizex 发送请求 (模型: {model}, thinking={effort}, 节点: {base_url}) ...")
+    t0 = time.time()
+    try:
+        resp = requests.post(endpoint, headers=headers, json=payload, timeout=(15, 300), stream=True)
+    except requests.exceptions.ProxyError:
+        resp = requests.post(endpoint, headers=headers, json=payload,
+                             proxies={"http": None, "https": None}, timeout=(15, 300), stream=True)
+    if resp.status_code == 400 and "tools" in payload:
+        payload.pop("tools", None)
+        resp = requests.post(endpoint, headers=headers, json=payload, timeout=(15, 300), stream=True)
+    if resp.status_code != 200:
+        raise RuntimeError(f"aizex HTTP {resp.status_code}: {resp.text[:300]}")
+
+    delta_parts = []
+    text_parts = []
+    data = {}
+    for raw in resp.iter_lines(decode_unicode=False):
+        if not raw or not raw.startswith(b"data:"):
+            continue
+        chunk = raw[5:].strip()
+        if not chunk or chunk == b"[DONE]":
+            continue
+        try:
+            ev = json.loads(chunk.decode("utf-8"))
+        except Exception:
+            continue
+        ev_type = ev.get("type", "")
+        if ev_type == "response.output_text.delta":
+            delta_parts.append(ev.get("delta", ""))
+        elif ev_type in ("response.completed", "response.incomplete"):
+            data = ev.get("response", {})
+        elif ev_type in ("response.failed", "error"):
+            raise RuntimeError(f"aizex 流式错误: {str(ev)[:250]}")
+
+    for item in data.get("output", []):
+        if item.get("type") == "message":
+            for c in item.get("content", []):
+                if c.get("type") == "output_text":
+                    text_parts.append(c.get("text", ""))
+
+    content = ("".join(text_parts) or "".join(delta_parts)).strip()
+    if len(content) < 800:
+        raise RuntimeError(f"aizex 返回内容过短 ({len(content)} 字符)")
+    print(f"  🎉 aizex 生成成功！耗时: {time.time() - t0:.2f}s, 字符数: {len(content)}")
+    return content
+
+
 def generate_digest_with_gemini(
     global_news: List[Dict[str, str]],
     ai_news: List[Dict[str, str]],
@@ -973,94 +1051,49 @@ def generate_digest(
     """
     智能大模型生成中枢：
     支持多引擎自适应优先级调度：
-    1. 默认 PRIMARY_ENGINE=codex:
-       Codex API (gpt-6.1-sol + medium 思考) -> DeepSeek (deepseek-v4-pro) -> Gemini -> 本地应急兜底
-    2. 若 PRIMARY_ENGINE=deepseek:
-       DeepSeek (deepseek-v4-pro) -> Codex API (gpt-6.1-sol) -> Gemini -> 本地应急兜底
+    1. 默认 PRIMARY_ENGINE=local:
+       本地 Gemini 3.8 Flash High -> aizex gpt-6.1-terra (high) -> 本地应急兜底
+    2. 若 PRIMARY_ENGINE=aizex:
+       aizex gpt-6.1-terra (high) -> 本地 Gemini 3.8 Flash -> 本地应急兜底
     """
-    codex_key = (os.getenv("CODEX_API_KEY") or "").strip()
-    deepseek_key = (os.getenv("DEEPSEEK_API_KEY") or "").strip()
-    gemini_key = (os.getenv("GEMINI_API_KEY") or "").strip()
+    local_key  = (os.getenv("LOCAL_LLM_API_KEY") or "").strip()
+    aizex_key  = (os.getenv("AIZEX_API_KEY") or "").strip()
     primary_engine = (os.getenv("PRIMARY_ENGINE") or "local").strip().lower()
-
-    # 智能防呆识别：如果用户将 sk-azx-... 的 Codex Key 误填在其他变量中
-    if not codex_key:
-        if deepseek_key.startswith("sk-azx-"):
-            codex_key = deepseek_key
-            deepseek_key = ""
-            print("  💡 [智能防呆识别] 检测到 DEEPSEEK_API_KEY 为 Codex 专属 Key，已自动映射为 CODEX_API_KEY！")
-        elif gemini_key.startswith("sk-azx-"):
-            codex_key = gemini_key
-            gemini_key = ""
-            print("  💡 [智能防呆识别] 检测到 GEMINI_API_KEY 为 Codex 专属 Key，已自动映射为 CODEX_API_KEY！")
-
-    # 智能防呆识别：如果用户将 sk-... 开头的 DeepSeek Key 填在 GEMINI_API_KEY 中
-    if not deepseek_key and gemini_key.startswith("sk-") and not gemini_key.startswith("sk-azx-"):
-        deepseek_key = gemini_key
-        print("  💡 [智能防呆识别] 检测到 GEMINI_API_KEY 格式为 'sk-...'，自动识别为 DeepSeek API Key！")
 
     errors = []
 
-    def try_codex() -> Optional[str]:
-        if not codex_key:
-            errors.append("Codex: 未配置 CODEX_API_KEY")
-            return None
-        model_name = (os.getenv("CODEX_MODEL") or "gpt-6.1-sol").strip()
-        effort_level = (os.getenv("CODEX_EFFORT") or "medium").strip().lower()
-        print(f"\n🧠 调度大模型引擎: Codex API ({model_name} + {effort_level} 深度思考)...")
-        try:
-            return generate_digest_with_codex(global_news, ai_news, github_projects, github_classic_gems, codex_key)
-        except Exception as e:
-            err = f"Codex API 失败: {e}"
-            errors.append(err)
-            print(f"  [降级触发] {err}，自动切换至下一备用引擎...")
-            return None
-
-    def try_deepseek() -> Optional[str]:
-        if not deepseek_key:
-            errors.append("DeepSeek: 未配置 DEEPSEEK_API_KEY")
-            return None
-        model_name = (os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro").strip()
-        print(f"\n🧠 调度大模型引擎: DeepSeek ({model_name})...")
-        try:
-            return generate_digest_with_deepseek(global_news, ai_news, github_projects, github_classic_gems, deepseek_key)
-        except Exception as e:
-            err = f"DeepSeek API 失败: {e}"
-            errors.append(err)
-            print(f"  [降级触发] {err}，自动切换至下一备用引擎...")
-            return None
-
-    def try_gemini() -> Optional[str]:
-        if not gemini_key or gemini_key.startswith("sk-"):
-            errors.append("Gemini: 未配置有效 GEMINI_API_KEY")
-            return None
-        print("\n🧠 调度备用大模型引擎: Google Gemini (动态模型)...")
-        try:
-            return generate_digest_with_gemini(global_news, ai_news, github_projects, github_classic_gems)
-        except Exception as e:
-            err = f"Gemini API 失败: {e}"
-            errors.append(err)
-            print(f"  [降级触发] {err}，启用本地应急提炼引擎...")
-            return None
-
     def try_local() -> Optional[str]:
-        local_key = (os.getenv("LOCAL_LLM_API_KEY") or "").strip()
         if not local_key:
+            errors.append("本地网关: 未配置 LOCAL_LLM_API_KEY")
             return None
-        print("\n🧠 调度大模型引擎: 本地网关 (Gemini 3.8 Flash)...")
+        print("\n🧠 调度大模型引擎: 本地网关 (Gemini 3.8 Flash High)...")
         try:
             return generate_digest_with_local(global_news, ai_news, github_projects, github_classic_gems, local_key)
         except Exception as e:
             err = f"本地网关失败: {e}"
             errors.append(err)
-            print(f"  [降级触发] {err}，自动切换至下一备用引擎...")
+            print(f"  [降级触发] {err}，自动切换至备用引擎...")
             return None
 
-    # 根据 primary_engine 确定调用顺序
-    if primary_engine == "codex":
-        order = [try_codex, try_local, try_gemini]
+    def try_aizex() -> Optional[str]:
+        if not aizex_key:
+            errors.append("aizex: 未配置 AIZEX_API_KEY")
+            return None
+        model_name = (os.getenv("AIZEX_MODEL") or "gpt-6.1-terra").strip()
+        effort = (os.getenv("AIZEX_EFFORT") or "high").strip().lower()
+        print(f"\n🧠 调度备用引擎: aizex {model_name} (thinking={effort})...")
+        try:
+            return generate_digest_with_aizex(global_news, ai_news, github_projects, github_classic_gems, aizex_key)
+        except Exception as e:
+            err = f"aizex 失败: {e}"
+            errors.append(err)
+            print(f"  [降级触发] {err}，启用本地应急兜底...")
+            return None
+
+    if primary_engine == "aizex":
+        order = [try_aizex, try_local]
     else:
-        order = [try_local, try_codex, try_gemini]
+        order = [try_local, try_aizex]
 
     for engine_fn in order:
         result = engine_fn()
