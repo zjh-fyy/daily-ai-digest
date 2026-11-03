@@ -13,9 +13,8 @@ on:
         default: 'codex'
         type: choice
         options:
-          - codex
-          - deepseek
-          - gemini
+          - local
+          - aizex
 
 jobs:
   build-and-send:
@@ -39,16 +38,14 @@ jobs:
 
       - name: Run Daily Digest Script
         env:
-          PRIMARY_ENGINE: ${{ inputs.primary_engine || secrets.PRIMARY_ENGINE || 'codex' }}
-          CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
-          CODEX_BASE_URL: ${{ secrets.CODEX_BASE_URL }}
-          CODEX_MODEL: ${{ secrets.CODEX_MODEL }}
-          CODEX_EFFORT: ${{ secrets.CODEX_EFFORT }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
-          DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+          PRIMARY_ENGINE: ${{ inputs.primary_engine || secrets.PRIMARY_ENGINE || 'local' }}
+          LOCAL_LLM_API_KEY: ${{ secrets.LOCAL_LLM_API_KEY }}
+          LOCAL_LLM_BASE_URL: ${{ secrets.LOCAL_LLM_BASE_URL }}
+          LOCAL_LLM_MODEL: ${{ secrets.LOCAL_LLM_MODEL }}
+          AIZEX_API_KEY: ${{ secrets.AIZEX_API_KEY }}
+          AIZEX_BASE_URL: ${{ secrets.AIZEX_BASE_URL }}
+          AIZEX_MODEL: ${{ secrets.AIZEX_MODEL }}
+          AIZEX_EFFORT: ${{ secrets.AIZEX_EFFORT }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
