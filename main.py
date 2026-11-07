@@ -18,14 +18,20 @@ import json
 import time
 import hashlib
 import urllib.parse
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, Iterable
 
 # 保证在各类控制台（尤其 Windows GBK 默认终端）下输出中文与 Emoji 不发生 UnicodeEncodeError
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+# 确保在便携 Python 环境下也能顺畅载入 .venv 中的第三方依赖库
+_venv_site = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".venv", "Lib", "site-packages")
+if os.path.isdir(_venv_site) and _venv_site not in sys.path:
+    sys.path.insert(0, _venv_site)
 
 import requests
 from bs4 import BeautifulSoup
@@ -45,6 +51,50 @@ load_dotenv()
 # ==================== 全局配置 ====================
 BEIJING_TZ = timezone(timedelta(hours=8))
 PREBUILT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prebuilt")
+HISTORY_FILE = os.path.join(PREBUILT_DIR, "history_seen.json")
+
+
+def init_network_proxy():
+    """智能探测本地代理端口 (7897 / 7890)。若未连通则自动清空代理变量，避免 requests 抛 ProxyError"""
+    proxy_env = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
+    ports_to_check = []
+    if proxy_env:
+        m = re.search(r":(\d+)", proxy_env)
+        if m:
+            try:
+                ports_to_check.append(int(m.group(1)))
+            except ValueError:
+                pass
+    ports_to_check.extend([7897, 7890])
+
+    working_port = None
+    import socket
+    for p in dict.fromkeys(ports_to_check):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.6)
+            res = s.connect_ex(("127.0.0.1", p))
+            s.close()
+            if res == 0:
+                working_port = p
+                break
+        except Exception:
+            pass
+
+    if working_port:
+        proxy_url = f"http://127.0.0.1:{working_port}"
+        os.environ["HTTP_PROXY"] = proxy_url
+        os.environ["HTTPS_PROXY"] = proxy_url
+        os.environ["NO_PROXY"] = "127.0.0.1,localhost"
+        print(f"🌐 [代理探测] 本地代理已接入: {proxy_url}")
+    else:
+        for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "all_proxy", "ALL_PROXY"):
+            os.environ.pop(k, None)
+        print("🌐 [代理探测] 本地代理端口未开放，已自动清空代理变量走直连")
+
+
+# 初始化网络代理探测
+init_network_proxy()
 
 
 def load_prebuilt_digest(date_str: str) -> Optional[str]:
@@ -61,6 +111,178 @@ def report_now() -> datetime:
     """早报署名日期；预生成模式下通过 REPORT_DATE_OFFSET_DAYS=1 写明天的日期"""
     offset = int((os.getenv("REPORT_DATE_OFFSET_DAYS") or "0").strip() or 0)
     return datetime.now(BEIJING_TZ) + timedelta(days=offset)
+
+
+def normalize_title(title: str) -> str:
+    """标准化标题，用于模糊去重匹配"""
+    t = re.sub(r"\[.*?\]|\(.*?\)|###|\*\*|[0-9]+[.:、]", "", title)
+    t = re.sub(r"[\s\-_—：:，,。！？!?（）()\"'“”‘’]+", "", t)
+    return t.lower()
+
+
+def is_title_duplicate(title: str, seen_titles: Optional[Iterable[str]], threshold: float = 0.65) -> bool:
+    """判断新标题是否与已报道历史标题高度相似（包含/前缀/文本相似度比对）"""
+    if not seen_titles or not title:
+        return False
+    norm = normalize_title(title)
+    if len(norm) < 4:
+        return False
+    import difflib
+    for st in seen_titles:
+        st_norm = normalize_title(st)
+        if len(st_norm) < 4:
+            continue
+        if (norm in st_norm or st_norm in norm) and min(len(norm), len(st_norm)) >= 6:
+            return True
+        min_len = min(len(norm), len(st_norm))
+        if min_len >= 8 and norm[:8] == st_norm[:8]:
+            return True
+        if difflib.SequenceMatcher(None, norm, st_norm).ratio() >= threshold:
+            return True
+    return False
+
+
+def scan_recent_history(days: int = 5, exclude_date: Optional[str] = None) -> Dict[str, Any]:
+    """
+    扫描 prebuilt/ 目录下最近 days 天的 .md 文件与 history_seen.json：
+    提取已报道的 URL、GitHub repo 以及核心标题，返回去重集合与 Prompt 黑名单摘要。
+    """
+    os.makedirs(PREBUILT_DIR, exist_ok=True)
+    seen_urls: Set[str] = set()
+    seen_repos: Set[str] = set()
+    seen_titles: List[str] = []
+    daily_summaries: List[Dict[str, Any]] = []
+
+    # 1. 扫描 prebuilt/*.md 文件
+    all_files = sorted(Path(PREBUILT_DIR).glob("*.md"), reverse=True)
+    valid_files = []
+    for fp in all_files:
+        date_name = fp.stem
+        if exclude_date and date_name == exclude_date:
+            continue
+        valid_files.append(fp)
+        if len(valid_files) >= days:
+            break
+
+    for fp in valid_files:
+        date_str = fp.stem
+        try:
+            content = fp.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        file_urls = re.findall(r"\[(?:[^\]]+)\]\((https?://[^\s)]+)\)", content)
+        file_repos = re.findall(r"github\.com/([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+)", content)
+        file_titles = re.findall(r"###\s+(?:\d+\.\s*)?([^\n]+)", content)
+
+        clean_repos = set()
+        for r in file_repos:
+            r_clean = r.rstrip("/").lower()
+            parts = r_clean.split("/")
+            if len(parts) == 2 and parts[0] not in ("topics", "features", "collections", "trending", "search", "events"):
+                clean_repos.add(r_clean)
+
+        clean_titles = [t.strip() for t in file_titles if len(t.strip()) >= 5]
+        clean_urls = {u.strip() for u in file_urls if u.strip()}
+
+        seen_urls.update(clean_urls)
+        seen_repos.update(clean_repos)
+        seen_titles.extend(clean_titles)
+
+        daily_summaries.append({
+            "date": date_str,
+            "titles": clean_titles[:8],
+            "repos": sorted(list(clean_repos)),
+            "urls_count": len(clean_urls)
+        })
+
+    # 2. 读取并合并 history_seen.json（记录 7 天）
+    history_data = {}
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                history_data = json.load(f)
+        except Exception as e:
+            print(f"  [提示] 读取 history_seen.json 异常: {e}")
+
+    entries = history_data.get("entries", {})
+    now_dt = report_now()
+    cutoff_dt = now_dt - timedelta(days=7)
+    cutoff_str = cutoff_dt.strftime("%Y-%m-%d")
+
+    pruned_entries = {}
+    for d_str, d_info in entries.items():
+        if d_str >= cutoff_str:
+            pruned_entries[d_str] = d_info
+            if exclude_date and d_str == exclude_date:
+                continue
+            seen_urls.update(d_info.get("urls", []))
+            for r in d_info.get("repos", []):
+                seen_repos.add(r.lower())
+            seen_titles.extend(d_info.get("titles", []))
+
+    # 构建注入到 Prompt 中的黑名单精简摘要
+    blacklist_lines = []
+    for day_info in daily_summaries[:4]:
+        d = day_info["date"]
+        titles_str = "；".join(day_info["titles"][:5])
+        repos_str = ", ".join(day_info["repos"][:8]) if day_info["repos"] else "无"
+        blacklist_lines.append(f"- 【{d} 已发要闻】: {titles_str}")
+        blacklist_lines.append(f"  已发开源仓库: {repos_str}")
+
+    blacklist_summary = "\n".join(blacklist_lines) if blacklist_lines else "暂无近期历史黑名单"
+
+    return {
+        "seen_urls": seen_urls,
+        "seen_repos": seen_repos,
+        "seen_titles": set(seen_titles),
+        "blacklist_summary": blacklist_summary,
+        "history_entries": pruned_entries
+    }
+
+
+def record_history_seen(date_str: str, content: str):
+    """把当天生成的早报内容持久化追加或更新至 prebuilt/history_seen.json"""
+    try:
+        urls = set(re.findall(r"\[(?:[^\]]+)\]\((https?://[^\s)]+)\)", content))
+        raw_repos = re.findall(r"github\.com/([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+)", content)
+        repos = set()
+        for r in raw_repos:
+            r_clean = r.rstrip("/").lower()
+            parts = r_clean.split("/")
+            if len(parts) == 2 and parts[0] not in ("topics", "features", "collections", "trending", "search", "events"):
+                repos.add(r_clean)
+
+        raw_titles = re.findall(r"###\s+(?:\d+\.\s*)?([^\n]+)", content)
+        titles = [t.strip() for t in raw_titles if len(t.strip()) >= 5]
+
+        history_data = {"entries": {}}
+        if os.path.exists(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                    history_data = json.load(f)
+            except Exception:
+                pass
+
+        entries = history_data.get("entries", {})
+        entries[date_str] = {
+            "urls": sorted(list(urls)),
+            "repos": sorted(list(repos)),
+            "titles": titles[:15],
+            "updated_at": datetime.now(BEIJING_TZ).isoformat()
+        }
+
+        cutoff_str = (report_now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        entries = {k: v for k, v in entries.items() if k >= cutoff_str}
+        history_data["entries"] = entries
+
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history_data, f, ensure_ascii=False, indent=2)
+        print(f"📁 已更新历史去重记录库: {HISTORY_FILE} (当天记录 {len(repos)} 个仓库, {len(urls)} 个链接)")
+    except Exception as e:
+        print(f"  [警告] 更新 history_seen.json 异常: {e}")
+
+
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -112,6 +334,14 @@ def fetch_rss_feed(url: str, source_name: str, max_items: int = 6) -> List[Dict[
             title = entry.get("title", "").strip()
             link = entry.get("link", "").strip()
             
+            # 若源名称包含 Google News 或检索词，尝试从标题末尾提取真实发布机构名
+            cleaned_source = source_name
+            if ("Google News" in source_name or "检索" in source_name) and " - " in title:
+                parts = title.rsplit(" - ", 1)
+                if len(parts) == 2 and 1 < len(parts[1].strip()) <= 25:
+                    title = parts[0].strip()
+                    cleaned_source = parts[1].strip()
+
             # 优先提取 content 内容，若无则使用 summary 或 description
             raw_content = ""
             if entry.get("content") and isinstance(entry["content"], list):
@@ -128,7 +358,7 @@ def fetch_rss_feed(url: str, source_name: str, max_items: int = 6) -> List[Dict[
                     "link": link,
                     "summary": summary,
                     "date": pub_date,
-                    "source": source_name
+                    "source": cleaned_source
                 })
         print(f"     ✅ 成功获取 {len(items)} 条资讯 ({source_name})")
     except Exception as e:
@@ -137,9 +367,86 @@ def fetch_rss_feed(url: str, source_name: str, max_items: int = 6) -> List[Dict[
     return items
 
 
+def fetch_hacker_news_algolia(max_items: int = 6) -> List[Dict[str, str]]:
+    """
+    通过 Algolia HN Search API 稳定采集高赞 AI/科技要闻，彻底替代经常 SSLEOFError 的 hnrss
+    """
+    print("  -> 正在通过 Algolia HN API 抓取科技深度要闻...")
+    items: List[Dict[str, str]] = []
+
+    # 方案 1: search_by_date 检索近期高分 AI 话题
+    try:
+        url = "https://hn.algolia.com/api/v1/search_by_date"
+        params = {
+            "tags": "story",
+            "query": "AI OR LLM OR OpenAI OR Claude OR GPU OR NVIDIA",
+            "numericFilters": "points>30",
+            "hitsPerPage": 15
+        }
+        resp = http_get(url, params=params)
+        if resp:
+            hits = resp.json().get("hits", [])
+            for h in hits:
+                title = (h.get("title") or "").strip()
+                if not title:
+                    continue
+                link = (h.get("url") or f"https://news.ycombinator.com/item?id={h.get('objectID')}").strip()
+                points = h.get("points") or 0
+                comments = h.get("num_comments") or 0
+                created_at = h.get("created_at") or ""
+                summary = f"Hacker News 社区高赞讨论 ({points} points, {comments} 评论)"
+                items.append({
+                    "title": title,
+                    "link": link,
+                    "summary": summary,
+                    "date": created_at,
+                    "source": "Hacker News"
+                })
+                if len(items) >= max_items:
+                    break
+    except Exception as e:
+        print(f"  [警告] Algolia search_by_date 异常: {e}")
+
+    # 方案 2: 降级回退到 front_page
+    if not items:
+        print("  [降级触发] 尝试抓取 Hacker News Front Page 热门...")
+        try:
+            url = "https://hn.algolia.com/api/v1/search"
+            params = {"tags": "front_page", "hitsPerPage": 20}
+            resp = http_get(url, params=params)
+            if resp:
+                hits = resp.json().get("hits", [])
+                for h in hits:
+                    title = (h.get("title") or "").strip()
+                    if not title:
+                        continue
+                    link = (h.get("url") or f"https://news.ycombinator.com/item?id={h.get('objectID')}").strip()
+                    points = h.get("points") or 0
+                    comments = h.get("num_comments") or 0
+                    created_at = h.get("created_at") or ""
+                    summary = f"Hacker News 首页热门 ({points} points, {comments} 评论)"
+                    items.append({
+                        "title": title,
+                        "link": link,
+                        "summary": summary,
+                        "date": created_at,
+                        "source": "Hacker News"
+                    })
+                    if len(items) >= max_items:
+                        break
+        except Exception as e:
+            print(f"  [警告] Algolia front_page 异常: {e}")
+
+    print(f"     ✅ 成功获取 {len(items)} 条 Hacker News 深度讨论")
+    return items
+
+
 # ==================== 数据采集模块 ====================
-def collect_global_news() -> List[Dict[str, str]]:
-    """采集全球重大时事政经资讯（多渠道融合）"""
+def collect_global_news(
+    seen_urls: Optional[Set[str]] = None,
+    seen_titles: Optional[Set[str]] = None
+) -> List[Dict[str, str]]:
+    """采集全球重大时事政经资讯（多渠道融合 + 跨天排重）"""
     print("\n[1/3] 正在采集【全球重大时事】资讯...")
     sources = [
         ("http://feeds.bbci.co.uk/news/world/rss.xml", "BBC World News", 6),
@@ -148,34 +455,53 @@ def collect_global_news() -> List[Dict[str, str]]:
     ]
 
     all_news = []
-    seen_titles = set()
+    current_seen_titles = set()
 
     for url, name, limit in sources:
         feed_items = fetch_rss_feed(url, name, max_items=limit)
         for item in feed_items:
-            # 基础去重（防止相同或高相似标题堆积）
+            # 1. 过滤已在最近历史中出现过的 URL
+            if seen_urls and item["link"] in seen_urls:
+                continue
+
+            # 2. 跨天及当日高相似度新闻标题去重
+            if seen_titles and is_title_duplicate(item["title"], seen_titles):
+                continue
+
             title_key = item["title"][:25].lower()
-            if title_key not in seen_titles:
-                seen_titles.add(title_key)
+            if title_key not in current_seen_titles:
+                current_seen_titles.add(title_key)
                 all_news.append(item)
 
     print(f"  => 全球时事汇总去重后共 {len(all_news)} 条数据底座")
     return all_news
 
 
-def collect_ai_news() -> List[Dict[str, str]]:
+def collect_ai_news(
+    seen_urls: Optional[Set[str]] = None,
+    seen_titles: Optional[Set[str]] = None
+) -> List[Dict[str, str]]:
     """采集 AI 核心御三家（OpenAI/Google/Anthropic）及英伟达/特斯拉双巨头最新要闻"""
     print("\n[2/4] 正在采集【AI 御三家 & 英伟达/特斯拉双巨头】最新资讯...")
     all_ai_items = []
-    seen_titles = set()
+    current_seen_titles = set()
+
+    def add_filtered_item(it: Dict[str, str]):
+        if seen_urls and it["link"] in seen_urls:
+            return
+        if seen_titles and is_title_duplicate(it["title"], seen_titles):
+            return
+        t_key = it["title"][:25].lower()
+        if t_key not in current_seen_titles:
+            current_seen_titles.add(t_key)
+            all_ai_items.append(it)
 
     # 1. OpenAI 官方新闻 RSS
     openai_feed = fetch_rss_feed("https://openai.com/news/rss.xml", "OpenAI Official News", max_items=5)
     for it in openai_feed:
-        all_ai_items.append(it)
-        seen_titles.add(it["title"][:25].lower())
+        add_filtered_item(it)
 
-    # 2. Google News 专项靶向检索（过去 2 天聚焦 AI 御三家 + 英伟达/特斯拉）
+    # 2. Google News 专项靶向检索（聚焦 AI 御三家 + 英伟达/特斯拉）
     targeted_queries = [
         # AI 御三家
         ('("OpenAI" OR "GPT" OR "Codex") when:2d', "OpenAI / GPT / Codex 检索", "en-US", "US:en"),
@@ -194,19 +520,12 @@ def collect_ai_news() -> List[Dict[str, str]]:
         search_rss_url = f"https://news.google.com/rss/search?q={encoded_q}&hl={hl}&gl=US&ceid={ceid}"
         feed_items = fetch_rss_feed(search_rss_url, label, max_items=4)
         for it in feed_items:
-            t_key = it["title"][:25].lower()
-            if t_key not in seen_titles:
-                seen_titles.add(t_key)
-                all_ai_items.append(it)
+            add_filtered_item(it)
 
-    # 3. Hacker News 高分 AI/科技深度讨论帖（>= 20 points）
-    hn_url = "https://hnrss.org/newest?q=GPT+OR+Claude+OR+Gemini+OR+Codex+OR+NVIDIA+OR+Tesla&points=20"
-    hn_items = fetch_rss_feed(hn_url, "Hacker News (Top AI Discussions)", max_items=5)
+    # 3. Hacker News 高分 AI/科技深度讨论帖（基于稳定 Algolia HN API）
+    hn_items = fetch_hacker_news_algolia(max_items=6)
     for it in hn_items:
-        t_key = it["title"][:25].lower()
-        if t_key not in seen_titles:
-            seen_titles.add(t_key)
-            all_ai_items.append(it)
+        add_filtered_item(it)
 
     print(f"  => AI 核心御三家与英伟达/特斯拉汇总去重后共 {len(all_ai_items)} 条数据底座")
     return all_ai_items
@@ -216,12 +535,14 @@ def collect_ai_news() -> List[Dict[str, str]]:
 fetch_ai_and_perks_news = collect_ai_news
 
 
-def collect_github_trending() -> List[Dict[str, Any]]:
-    """抓取今日 GitHub Trending 热门榜单，自带 GitHub Search API 优雅降级"""
+def collect_github_trending(seen_repos: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+    """抓取今日 GitHub Trending 热门榜单，自带 GitHub Search API 优雅降级与跨天防重复"""
     print("\n[3/3] 正在抓取【GitHub Trending 今日热门】...")
     trending_url = "https://github.com/trending?since=daily"
     resp = http_get(trending_url)
     projects = []
+
+    normalized_seen_repos = {r.lower() for r in (seen_repos or set())}
 
     if resp:
         try:
@@ -229,7 +550,7 @@ def collect_github_trending() -> List[Dict[str, Any]]:
             rows = soup.select("article.Box-row")
             print(f"  -> GitHub Trending HTML 解析成功，共扫描到 {len(rows)} 个项目")
 
-            for row in rows[:12]:
+            for row in rows[:16]:
                 title_elem = row.select_one("h2 a")
                 if not title_elem:
                     continue
@@ -237,6 +558,11 @@ def collect_github_trending() -> List[Dict[str, Any]]:
                 repo_path = title_elem.get("href", "").strip().lstrip("/")
                 repo_url = f"https://github.com/{repo_path}"
                 name = re.sub(r"\s+", "", title_elem.text)
+
+                # 跨天去重：若该仓库在前 5 天已推荐过，坚决跳过
+                if repo_path.lower() in normalized_seen_repos or name.lower() in normalized_seen_repos:
+                    print(f"  [跨天去重] 跳过近 5 天已推荐项目: {name}")
+                    continue
 
                 desc_elem = row.select_one("p")
                 description = desc_elem.text.strip() if desc_elem else "暂无项目描述"
@@ -265,7 +591,7 @@ def collect_github_trending() -> List[Dict[str, Any]]:
                 })
 
             if projects:
-                print(f"  => 成功提取 GitHub Trending 前 {len(projects)} 个项目")
+                print(f"  => 成功提取 GitHub Trending 前 {len(projects)} 个项目 (已过滤重复)")
                 return projects
         except Exception as e:
             print(f"  ❌ 解析 GitHub Trending HTML 发生异常: {e}")
@@ -275,19 +601,24 @@ def collect_github_trending() -> List[Dict[str, Any]]:
     try:
         now_bj = datetime.now(BEIJING_TZ)
         seven_days_ago = (now_bj - timedelta(days=7)).strftime("%Y-%m-%d")
-        api_url = f"https://api.github.com/search/repositories?q=created:>{seven_days_ago}&sort=stars&order=desc&per_page=10"
+        api_url = f"https://api.github.com/search/repositories?q=created:>{seven_days_ago}&sort=stars&order=desc&per_page=15"
         api_resp = http_get(api_url)
         if api_resp:
             data = api_resp.json()
-            for repo in data.get("items", [])[:8]:
+            for repo in data.get("items", []):
+                full_name = repo.get("full_name", "")
+                if full_name.lower() in normalized_seen_repos:
+                    continue
                 projects.append({
-                    "name": repo.get("full_name", ""),
+                    "name": full_name,
                     "url": repo.get("html_url", ""),
                     "description": repo.get("description", "暂无描述"),
                     "language": repo.get("language", "Unknown"),
                     "stars_today": f"+{repo.get('stargazers_count', 0)} (近期飙升)",
                     "total_stars": str(repo.get("stargazers_count", 0))
                 })
+                if len(projects) >= 10:
+                    break
             print(f"  => GitHub Search API 备用方案成功抓取 {len(projects)} 个飙升项目")
     except Exception as e:
         print(f"  ❌ GitHub Search API 降级方案亦失败: {e}")
@@ -455,98 +786,15 @@ def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[
 collect_github_classic_gems = fetch_github_classic_gems
 
 
-# ==================== Gemini API 提炼模块 ====================
-def get_candidate_models(client) -> List[str]:
-    """
-    动态探测当前 API Key 支持的最新 Gemini 模型并按代际降序排序：
-    1. 优先调用 client.models.list() 动态检索可用模型
-    2. 过滤非文本生成模型 (embedding, imagen, veo, tts, vision, aqa 等)
-    3. 正则提取代际版本号 (如 4.x > 3.8 > 2.5 > 2.0)，同代际优先选择 flash，其次 pro
-    4. 即使 models.list() 异常，亦保留静态兜底列表确保可用
-    5. 若用户设置了环境变量 GEMINI_MODEL，置顶优先尝试
-    """
-    discovered: List[str] = []
-
-    # 静态兜底列表（包含最新代际别名及主流稳定模型）
-    static_fallback = [
-        "gemini-flash-latest",
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-2.5-pro",
-        "gemini-1.5-flash",
-    ]
-
-    try:
-        print("  🔍 正在动态探测当前 API Key 支持的最新 Gemini 模型列表...")
-        for model in client.models.list():
-            raw_name = getattr(model, "name", "") or ""
-            # 去除前缀 'models/' 或 'publishers/google/models/'
-            name = raw_name.split("/")[-1].strip()
-
-            if not name.startswith("gemini-"):
-                continue
-
-            # 过滤非文本生成的专业模型
-            excluded_keywords = [
-                "embedding", "embed", "imagen", "veo", "tts",
-                "vision", "aqa", "deep-research", "live", "whisper", "audio"
-            ]
-            if any(k in name.lower() for k in excluded_keywords):
-                continue
-
-            # 若有 supported_actions，检查是否支持 generateContent
-            supported_actions = getattr(model, "supported_actions", None)
-            if supported_actions and not any("generatecontent" in str(act).lower() for act in supported_actions):
-                continue
-
-            discovered.append(name)
-
-        if discovered:
-            def score_model(m_name: str) -> tuple:
-                # 提取代际版本号，如 gemini-4-flash -> 4.0, gemini-3.8-flash -> 3.8, gemini-2.5-flash -> 2.5
-                match = re.search(r"gemini-(\d+(?:\.\d+)?)", m_name)
-                ver = float(match.group(1)) if match else (999.0 if "latest" in m_name else 0.0)
-
-                # 同代际类型权重：flash 正式 > flash 预览/实验 > pro 正式 > pro 预览/实验 > 其他
-                if "flash" in m_name:
-                    type_score = 4 if ("exp" not in m_name and "preview" not in m_name) else 3
-                elif "pro" in m_name:
-                    type_score = 2 if ("exp" not in m_name and "preview" not in m_name) else 1
-                else:
-                    type_score = 0
-                return (ver, type_score)
-
-            discovered.sort(key=score_model, reverse=True)
-    except Exception as e:
-        print(f"  [提示] 动态探测模型列表异常 ({e})，启用静态兜底模型列表")
-
-    # 去重组合：动态发现的模型优先，静态兜底补充
-    candidate_models: List[str] = []
-    seen = set()
-    for m in discovered + static_fallback:
-        if m not in seen:
-            seen.add(m)
-            candidate_models.append(m)
-
-    # 若用户设置了环境变量 GEMINI_MODEL，将其排在第一位优先尝试
-    user_model = os.getenv("GEMINI_MODEL", "").strip()
-    if user_model:
-        if user_model in candidate_models:
-            candidate_models.remove(user_model)
-        candidate_models.insert(0, user_model)
-        print(f"  📌 检测到环境变量 GEMINI_MODEL={user_model}，已置顶为最高优先级候选！")
-
-    print(f"  🔍 已探测到当前 API Key 支持的最新模型候选列表: {candidate_models[:6]}")
-    return candidate_models
-
-
+# ==================== 大模型提炼核心模块 ====================
 def build_digest_prompt(
     global_news: List[Dict[str, str]],
     ai_news: List[Dict[str, str]],
     github_projects: List[Dict[str, Any]],
-    github_classic_gems: Optional[List[Dict[str, Any]]] = None
+    github_classic_gems: Optional[List[Dict[str, Any]]] = None,
+    blacklist_summary: str = ""
 ) -> str:
-    """构建供大模型 (Codex / DeepSeek / Gemini) 提炼的统一标准 Prompt"""
+    """构建供大模型 (本地 Gemini 3.8 Flash / aizex gpt-6.1-terra) 提炼的统一标准 Prompt"""
     now_bj = report_now()
     date_str = now_bj.strftime("%Y年%m月%d日")
     weekday_map = {0: "星期一", 1: "星期二", 2: "星期三", 3: "星期四", 4: "星期五", 5: "星期六", 6: "星期日"}
@@ -564,6 +812,17 @@ def build_digest_prompt(
     }
     context_json = json.dumps(context_data, ensure_ascii=False, indent=2)
 
+    blacklist_section = ""
+    if blacklist_summary and blacklist_summary.strip() != "暂无近期历史黑名单":
+        blacklist_section = f"""
+### 🚫 近期已报道事件与开源项目黑名单（最近 3~5 天已发内容，严禁炒冷饭）：
+{blacklist_summary}
+
+【防重复铁律】：
+1. 严禁对黑名单中的同一事件换个说法重复报道（除非有重大新进展，需明确写出“最新进展”）；
+2. 严禁重复推荐黑名单中出现的任何 GitHub 项目，确保今日推荐的开源项目 100% 崭新！
+"""
+
     prompt = f"""
 你是一位殿堂级科技主编与资深国际政治经济观察家。请基于我为你采集的【原始数据底座】，为微信移动端读者精编一份高质量、兼具深度与可读性的早报。
 
@@ -572,7 +831,7 @@ def build_digest_prompt(
 
 ### 📦 原始数据底座 (JSON)
 {context_json}
-
+{blacklist_section}
 ---
 
 ### 📝 结构与撰写准则（必须严格执行）：
@@ -591,15 +850,18 @@ def build_digest_prompt(
 
 #### 🤖 板块二：AI 核心御三家 & 英伟达/特斯拉深度追踪
 - **【彻底移除原福利专栏】**：坚决不输出任何“今日福利/优惠活动/白嫖羊毛”内容，全力聚焦前沿科技攻防与产业风云！
+- **【宁缺毋滥与反假大空准则】**：
+  若当日某细分公司（如特斯拉/马斯克或某家御三家）在提供的数据底座中无实质性重大新进展，**严禁使用官网主页链接（如 https://www.tesla.com、https://www.nvidia.com）或假大空的套话套词强行凑数**！可直接将该名额让渡给其他有重大突破的 AI 实验室、前沿开源模型、芯片算力架构动态或具身智能进展，或者如实写明今日无重大动向并聚焦其他核心看点。
 - 必须严格分为以下两个子部分输出：
   1. **🧠 AI 大模型与工具御三家（GPT/Codex、Gemini/Antigravity、Claude）**：
      - 提炼 OpenAI、Google、Anthropic 三家最新的模型发布、能力升级、API 迭代、IDE/Agent 生态及核心战略进展。
   2. **⚡ 算力与具身智能双巨头（英伟达 NVIDIA & 特斯拉 Tesla）**：
      - **英伟达 (NVIDIA)**：老黄最新动向、AI 算力芯片（Blackwell/Rubin）、CUDA 生态、网络互联架构与市场催化剂。
      - **特斯拉 (Tesla)**：FSD 自动驾驶落地、Optimus 仿生机器人、Robotaxi 车队、工程突破与战略动作。
-     - 每条均附带可点击的来源链接，如 `[🔗 查看原文](链接)`。
+     - 每条均附带可点击的真实来源链接，如 `[🔗 查看原文](链接)`。
 
 #### 🔥 板块三：GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）
+- **【严禁推荐黑名单中的 GitHub 项目】**：确保今日推荐的所有开源项目与最近 5 天绝不重复！
 - 必须严格分为以下两个子部分输出：
   1. **📈 今日飙升热榜（精选 4~5 个近期暴涨的新锐项目）**：
      - 从 `raw_github_trending` 中挑选最惊艳的 4~5 个项目。
@@ -626,175 +888,206 @@ def build_digest_prompt(
     return prompt
 
 
-def generate_digest_with_codex(
+def generate_digest_with_local(
     global_news: List[Dict[str, str]],
     ai_news: List[Dict[str, str]],
     github_projects: List[Dict[str, Any]],
     github_classic_gems: Optional[List[Dict[str, Any]]],
-    api_key: str
+    api_key: str,
+    blacklist_summary: str = ""
+) -> str:
+    """调用本机 Antigravity 网关 (OpenAI 兼容, Gemini 3.8 Flash)，仅在本机开机时可用"""
+    base_url = (os.getenv("LOCAL_LLM_BASE_URL") or "http://127.0.0.1:8317/v1").strip().rstrip("/")
+    model = (os.getenv("LOCAL_LLM_MODEL") or "gemini-3.8-flash-high").strip()
+    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems, blacklist_summary=blacklist_summary)
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": (
+                "你是一位殿堂级科技主编与资深国际政治经济观察家。请基于提供的数据底座，"
+                "为移动端读者精编一份结构严谨、前因后果清晰、大白话解读开源项目、兼具深度与可读性的每日 AI & 全球资讯早报。"
+                "【完整性铁律】：必须按顺序完整输出三大板块：1.全球时事；2.AI 核心御三家 & 英伟达/特斯拉深度追踪；"
+                "3.GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）。严禁截断、严禁输出任何免责声明。"
+            )},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.5,
+        "max_tokens": 16384
+    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    print(f"  🚀 正在向本地网关发送生成请求 (模型: {model}, 接口: {base_url}) ...")
+    t0 = time.time()
+    resp = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload,
+                         proxies={"http": None, "https": None}, timeout=(10, 600))
+    if resp.status_code != 200:
+        raise RuntimeError(f"本地网关 HTTP {resp.status_code}: {resp.text[:300]}")
+    choices = resp.json().get("choices", [])
+    content = (choices[0].get("message", {}).get("content") or "").strip() if choices else ""
+    if len(content) < 800:
+        raise RuntimeError(f"本地网关返回内容过短 ({len(content)} 字符)")
+    print(f"  🎉 本地网关生成成功！耗时: {time.time() - t0:.2f}s, 字符数: {len(content)}")
+    return content
+
+
+def generate_digest_with_gpt_sol(
+    global_news: List[Dict[str, str]],
+    ai_news: List[Dict[str, str]],
+    github_projects: List[Dict[str, Any]],
+    github_classic_gems: Optional[List[Dict[str, Any]]],
+    api_key: str,
+    blacklist_summary: str = ""
 ) -> str:
     """
-    调用用户专属 Codex API (基于 OpenAI /v1/responses 协议，带自动节点故障转移与深度思考)
-    根据网络环境智能调整节点顺序：
-    - GitHub Actions (海外云端环境)：优先 Cloudflare 全球加速节点 https://codex-api.aizex.net/v1
-    - 本地国内环境：优先香港原生直连节点 https://ca.memofun.net/v1
-    支持 HTTP 409 (operation_in_progress) / 502 / 503 / 504 自动等待 20s 并重试
+    调用用户主力云端 API (gpt-6.1-sol + high 深度思考)，使用 /v1/responses 协议。
+    内置多节点智能切换、最多 3 次指数退避重试 (解决 upstream_stream_incomplete 等流式网络中断)，
+    并在重试失败时自动降级非流式单次抓取，确保高可靠送达。
     """
-    codex_model = (os.getenv("CODEX_MODEL") or "gpt-6.1-sol").strip()
-    codex_effort = (os.getenv("CODEX_EFFORT") or "medium").strip().lower()
+    model = (os.getenv("CODEX_MODEL") or os.getenv("AIZEX_MODEL") or "gpt-6.1-sol").strip()
+    effort = (os.getenv("CODEX_EFFORT") or os.getenv("AIZEX_EFFORT") or "high").strip().lower()
 
-    valid_efforts = {"low", "medium", "high", "xhigh", "max"}
-    if codex_effort not in valid_efforts:
-        codex_effort = "medium"
-
-    # 根据运行环境动态排序端点
+    # 动态端点候选池 (国内优先香港直连，云端 Actions 优先全球加速)
     is_github_actions = (os.getenv("GITHUB_ACTIONS") or "").strip().lower() == "true"
+    endpoints = []
+    custom_url = (os.getenv("AIZEX_BASE_URL") or os.getenv("CODEX_BASE_URL") or "").strip().rstrip("/")
+    if custom_url:
+        endpoints.append(custom_url)
     if is_github_actions:
-        endpoints = [
-            "https://codex-api.aizex.net/v1",   # Cloudflare 全球加速 (海外云环境首选)
-            "https://ca.memofun.net/v1"         # 香港原生高速直连 (备选)
-        ]
+        for ep in ["https://codex-api.aizex.net/v1", "https://ca.memofun.net/v1"]:
+            if ep not in endpoints:
+                endpoints.append(ep)
     else:
-        endpoints = [
-            "https://ca.memofun.net/v1",         # 香港原生高速直连 (国内环境首选)
-            "https://codex-api.aizex.net/v1"    # Cloudflare 全球加速 (备选)
-        ]
+        for ep in ["https://ca.memofun.net/v1", "https://codex-api.aizex.net/v1"]:
+            if ep not in endpoints:
+                endpoints.append(ep)
 
-    # 用户若显式指定 CODEX_BASE_URL，优先插入首位
-    custom_base_url = (os.getenv("CODEX_BASE_URL") or "").strip().rstrip("/")
-    if custom_base_url:
-        if custom_base_url in endpoints:
-            endpoints.remove(custom_base_url)
-        endpoints.insert(0, custom_base_url)
+    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems, blacklist_summary=blacklist_summary)
 
-    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems)
-
-    payload = {
-        "model": codex_model,
+    base_payload = {
+        "model": model,
         "input": prompt,
         "instructions": (
             "你是一位殿堂级科技主编与资深国际政治经济观察家。请基于提供的数据底座，"
             "为移动端读者精编一份结构严谨、前因后果清晰、大白话解读开源项目、兼具深度与可读性的每日 AI & 全球资讯早报。"
-            "请务必完整输出三大板块，切勿遗漏。严禁输出任何关于未联网或数据底座局限性的免责声明或编者说明。"
+            "请务必完整输出三大板块，切勿遗漏。严禁输出任何关于未联网或数据底座局限性的免责声明。"
         ),
-        "reasoning": {
-            "effort": codex_effort
-        },
-        "stream": True,
-        "tools": [
-            {"type": "web_search"}
-        ]
+        "reasoning": {"effort": effort},
     }
 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "Accept": "text/event-stream",
-        "User-Agent": USER_AGENT
+        "User-Agent": USER_AGENT,
     }
 
-    last_error = None
-    for b_url in endpoints:
-        endpoint = f"{b_url}/responses"
-        max_node_retries = 3
-        for retry_idx in range(1, max_node_retries + 1):
-            tools_desc = "带实时 WebSearch 增强" if "tools" in payload else "无外部工具"
-            print(f"  🚀 正在向 Codex API 发送请求 (模型: {codex_model}, 思考深度: {codex_effort}, {tools_desc}, 节点: {b_url}, 尝试: {retry_idx}/{max_node_retries}) ...")
-            t0 = time.time()
+    max_retries = 3
+    last_err = None
+
+    for attempt in range(1, max_retries + 1):
+        # 前 2 次尝试 SSE 流式；若连续流式中断，第 3 次自动降级非流式 (stream: False) 彻底避开 SSE 截断风险
+        use_stream = (attempt < 3)
+        payload = dict(base_payload)
+        payload["stream"] = use_stream
+
+        # 端点轮换
+        base_url = endpoints[(attempt - 1) % len(endpoints)]
+        endpoint = f"{base_url}/responses"
+
+        stream_desc = "流式 SSE" if use_stream else "非流式完整拉取"
+        print(f"  🚀 [尝试 {attempt}/{max_retries}] 正在向云端 API 发送请求 (模型: {model}, thinking={effort}, {stream_desc}, 节点: {base_url}) ...")
+        t0 = time.time()
+
+        req_headers = dict(headers)
+        if use_stream:
+            req_headers["Accept"] = "text/event-stream"
+        else:
+            req_headers["Accept"] = "application/json"
+
+        try:
             try:
-                try:
-                    resp = requests.post(endpoint, headers=headers, json=payload, timeout=(15, 300), stream=True)
-                except requests.exceptions.ProxyError:
-                    print(f"  [代理自愈] 本地代理异常，自动切换为直连请求节点 {b_url} ...")
-                    resp = requests.post(endpoint, headers=headers, json=payload, proxies={"http": None, "https": None}, timeout=(15, 300), stream=True)
-                if resp.status_code == 200:
-                    # 流式 SSE 读取：持续有数据返回，避免 Cloudflare 100s 无响应触发 524
-                    data = None
-                    delta_parts = []
-                    for raw in resp.iter_lines(decode_unicode=False):
-                        if not raw or not raw.startswith(b"data:"):
-                            continue
-                        chunk = raw[5:].strip()
-                        if not chunk or chunk == b"[DONE]":
-                            continue
-                        try:
-                            ev = json.loads(chunk.decode("utf-8"))
-                        except Exception:
-                            continue
-                        ev_type = ev.get("type", "")
-                        if ev_type == "response.output_text.delta":
-                            delta_parts.append(ev.get("delta", ""))
-                        elif ev_type in ("response.completed", "response.incomplete"):
-                            data = ev.get("response", {})
-                        elif ev_type in ("response.failed", "error"):
-                            raise RuntimeError(f"Codex 流式返回错误: {str(ev)[:250]}")
-                    elapsed = time.time() - t0
-                    if data is None:
-                        data = {}
-                    output_items = data.get("output", [])
-                    text_parts = []
-                    for item in output_items:
-                        if item.get("type") == "message":
-                            for c in item.get("content", []):
-                                if c.get("type") == "output_text":
-                                    text_parts.append(c.get("text", ""))
+                resp = requests.post(endpoint, headers=req_headers, json=payload, timeout=(15, 300), stream=use_stream)
+            except requests.exceptions.ProxyError:
+                resp = requests.post(endpoint, headers=req_headers, json=payload,
+                                     proxies={"http": None, "https": None}, timeout=(15, 300), stream=use_stream)
 
-                    final_text = "".join(text_parts).strip() or "".join(delta_parts).strip()
-                    if not final_text:
-                        raise RuntimeError("Codex API 返回内容为空")
+            if resp.status_code == 400 and "tools" in payload:
+                payload.pop("tools", None)
+                resp = requests.post(endpoint, headers=req_headers, json=payload, timeout=(15, 300), stream=use_stream)
 
-                    usage = data.get("usage", {})
-                    reasoning_tokens = usage.get("output_tokens_details", {}).get("reasoning_tokens", 0)
-                    output_tokens = usage.get("output_tokens", 0)
-                    input_tokens = usage.get("input_tokens", 0)
+            if resp.status_code != 200:
+                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
 
-                    print(
-                        f"  🎉 Codex API ({codex_model}) 生成成功！耗时: {elapsed:.2f}s, "
-                        f"输入Token: {input_tokens}, 输出Token: {output_tokens} (含思考: {reasoning_tokens}), 字符数: {len(final_text)}"
-                    )
-                    return final_text
-                elif resp.status_code == 400 and "tools" in payload:
-                    print(f"  [特性适配] 节点 {b_url} 不支持 web_search 工具，自动移除 tools 字段并重试...")
-                    payload.pop("tools", None)
-                    continue
-                elif resp.status_code in (409, 502, 503, 504) or "operation_in_progress" in resp.text:
-                    err_msg = f"节点 {b_url} 返回 HTTP {resp.status_code}: {resp.text[:200]}"
-                    print(f"  [并发锁占用/服务繁忙] {err_msg}")
-                    last_error = RuntimeError(err_msg)
-                    if retry_idx < max_node_retries:
-                        wait_sec = 20
-                        print(f"  ⏳ 等待 {wait_sec} 秒让上一次后台任务释放锁后重试 (第 {retry_idx}/{max_node_retries} 次)...")
-                        time.sleep(wait_sec)
+            if not use_stream:
+                # 非流式直接解析 JSON
+                data = resp.json()
+                text_parts = []
+                for item in data.get("output", []):
+                    if item.get("type") == "message":
+                        for c in item.get("content", []):
+                            if c.get("type") == "output_text":
+                                text_parts.append(c.get("text", ""))
+                content = "".join(text_parts).strip()
+            else:
+                # 流式解析 SSE 事件
+                delta_parts = []
+                text_parts = []
+                data = {}
+                stream_error = None
+                for raw in resp.iter_lines(decode_unicode=False):
+                    if not raw or not raw.startswith(b"data:"):
                         continue
-                    else:
-                        print(f"  [-] 节点 {b_url} 重试耗尽，切换至备用节点...")
+                    chunk = raw[5:].strip()
+                    if not chunk or chunk == b"[DONE]":
+                        continue
+                    try:
+                        ev = json.loads(chunk.decode("utf-8"))
+                    except Exception:
+                        continue
+                    ev_type = ev.get("type", "")
+                    if ev_type == "response.output_text.delta":
+                        delta_parts.append(ev.get("delta", ""))
+                    elif ev_type in ("response.completed", "response.incomplete"):
+                        data = ev.get("response", {})
+                    elif ev_type in ("response.failed", "error"):
+                        err_detail = str(ev)
+                        stream_error = f"流式返回错误: {err_detail[:250]}"
                         break
 
-                else:
-                    err_msg = f"节点 {b_url} 返回 HTTP {resp.status_code}: {resp.text[:250]}"
-                    print(f"  [节点告警] {err_msg}，准备尝试备用节点...")
-                    last_error = RuntimeError(err_msg)
-                    break
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-                elapsed = time.time() - t0
-                err_msg = f"节点 {b_url} 网络异常 ({elapsed:.2f}s): {e}"
-                print(f"  [网络中断] {err_msg}")
-                last_error = e
-                if retry_idx < max_node_retries:
-                    wait_sec = 15
-                    print(f"  ⏳ 等待 {wait_sec} 秒后重试该节点...")
-                    time.sleep(wait_sec)
-                    continue
-                else:
-                    break
-            except Exception as e:
-                elapsed = time.time() - t0
-                err_msg = f"节点 {b_url} 请求异常 ({elapsed:.2f}s): {e}"
-                print(f"  [节点故障] {err_msg}，准备尝试备用节点...")
-                last_error = e
-                break
+                for item in data.get("output", []):
+                    if item.get("type") == "message":
+                        for c in item.get("content", []):
+                            if c.get("type") == "output_text":
+                                text_parts.append(c.get("text", ""))
 
-    raise last_error or RuntimeError("所有 Codex 节点均未能成功响应")
+                content = ("".join(text_parts) or "".join(delta_parts)).strip()
+
+                if stream_error:
+                    # 如果流式报错，但已经截获到完整高质量正文，且长度达标，则宽容使用
+                    if len(content) >= 1200 and "板块三" in content:
+                        print(f"  ⚠️ 流式中途收到结束提示但正文已完整接收 ({len(content)} 字符)，正常采纳。")
+                        return content
+                    raise RuntimeError(stream_error)
+
+            if len(content) < 800:
+                raise RuntimeError(f"返回内容过短 ({len(content)} 字符)")
+
+            print(f"  🎉 {model} 生成成功！耗时: {time.time() - t0:.2f}s, 字符数: {len(content)}")
+            return content
+
+        except Exception as e:
+            last_err = e
+            err_str = str(e)
+            print(f"  ⚠️ [尝试 {attempt}/{max_retries} 失败] {err_str[:160]}")
+            if attempt < max_retries:
+                backoff = attempt * 3
+                print(f"  🔄 触发自动指数退避自愈，等待 {backoff}s 后执行下一次重试...")
+                time.sleep(backoff)
+
+    raise RuntimeError(f"云端主力引擎 ({model}) 在 {max_retries} 次尝试后仍未成功: {last_err}")
+
+
+# 向下兼容别名
+generate_digest_with_aizex = generate_digest_with_gpt_sol
+generate_digest_with_codex = generate_digest_with_gpt_sol
 
 
 def generate_digest_with_deepseek(
@@ -802,9 +1095,10 @@ def generate_digest_with_deepseek(
     ai_news: List[Dict[str, str]],
     github_projects: List[Dict[str, Any]],
     github_classic_gems: Optional[List[Dict[str, Any]]],
-    api_key: str
+    api_key: str,
+    blacklist_summary: str = ""
 ) -> str:
-    """调用 DeepSeek 官方 API (或 OpenAI 兼容格式接口) 生成高质量早报"""
+    """调用 DeepSeek 官方 API (或 OpenAI 兼容格式接口 deepseek-v4-pro) 生成高质量早报 (第三顺位兜底)"""
     base_url = (os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").strip().rstrip("/")
     model = (os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro").strip()
 
@@ -812,10 +1106,10 @@ def generate_digest_with_deepseek(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "User-Agent": USER_AGENT
+        "User-Agent": USER_AGENT,
     }
 
-    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems)
+    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems, blacklist_summary=blacklist_summary)
 
     payload = {
         "model": model,
@@ -856,6 +1150,9 @@ def generate_digest_with_deepseek(
         content = msg.get("content") or ""
         if not content and msg.get("reasoning_content"):
             content = msg.get("reasoning_content")
+        content = (content or "").strip()
+        if len(content) < 800:
+            raise RuntimeError(f"DeepSeek 返回内容过短 ({len(content)} 字符)")
         usage = data.get("usage", {})
         print(f"  🎉 DeepSeek 生成成功！耗时: {elapsed:.2f}s, 模型: {model}, 消耗 Token: {usage.get('total_tokens', 'N/A')}, 字符数: {len(content)}")
         return content
@@ -864,236 +1161,98 @@ def generate_digest_with_deepseek(
         raise RuntimeError(err_msg)
 
 
-
-def generate_digest_with_local(
-    global_news: List[Dict[str, str]],
-    ai_news: List[Dict[str, str]],
-    github_projects: List[Dict[str, Any]],
-    github_classic_gems: Optional[List[Dict[str, Any]]],
-    api_key: str
-) -> str:
-    """调用本机 Antigravity 网关 (OpenAI 兼容, Gemini 3.8 Flash)，仅在本机开机时可用"""
-    base_url = (os.getenv("LOCAL_LLM_BASE_URL") or "http://127.0.0.1:8317/v1").strip().rstrip("/")
-    model = (os.getenv("LOCAL_LLM_MODEL") or "gemini-3.8-flash-high").strip()
-    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems)
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": (
-                "你是一位殿堂级科技主编与资深国际政治经济观察家。请基于提供的数据底座，"
-                "为移动端读者精编一份结构严谨、前因后果清晰、大白话解读开源项目、兼具深度与可读性的每日 AI & 全球资讯早报。"
-                "【完整性铁律】：必须按顺序完整输出三大板块：1.全球时事；2.AI 核心御三家 & 英伟达/特斯拉深度追踪；"
-                "3.GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）。严禁截断、严禁输出任何免责声明。"
-            )},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.5,
-        "max_tokens": 16384
-    }
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    print(f"  🚀 正在向本地网关发送生成请求 (模型: {model}, 接口: {base_url}) ...")
-    t0 = time.time()
-    resp = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload,
-                         proxies={"http": None, "https": None}, timeout=(10, 600))
-    if resp.status_code != 200:
-        raise RuntimeError(f"本地网关 HTTP {resp.status_code}: {resp.text[:300]}")
-    choices = resp.json().get("choices", [])
-    content = (choices[0].get("message", {}).get("content") or "").strip() if choices else ""
-    if len(content) < 800:
-        raise RuntimeError(f"本地网关返回内容过短 ({len(content)} 字符)")
-    print(f"  🎉 本地网关生成成功！耗时: {time.time() - t0:.2f}s, 字符数: {len(content)}")
-    return content
-
-
-def generate_digest_with_aizex(
-    global_news: List[Dict[str, str]],
-    ai_news: List[Dict[str, str]],
-    github_projects: List[Dict[str, Any]],
-    github_classic_gems: Optional[List[Dict[str, Any]]],
-    api_key: str
-) -> str:
-    """调用 aizex gpt-6.1-terra，使用 /v1/responses 流式 SSE + high 深度思考，作为云端备用引擎"""
-    base_url = (os.getenv("AIZEX_BASE_URL") or "https://ca.memofun.net/v1").strip().rstrip("/")
-    model = (os.getenv("AIZEX_MODEL") or "gpt-6.1-terra").strip()
-    effort = (os.getenv("AIZEX_EFFORT") or "high").strip().lower()
-    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems)
-
-    payload = {
-        "model": model,
-        "input": prompt,
-        "instructions": (
-            "你是一位殿堂级科技主编与资深国际政治经济观察家。请基于提供的数据底座，"
-            "为移动端读者精编一份结构严谨、前因后果清晰、大白话解读开源项目、兼具深度与可读性的每日 AI & 全球资讯早报。"
-            "请务必完整输出三大板块，切勿遗漏。严禁输出任何关于未联网或数据底座局限性的免责声明。"
-        ),
-        "reasoning": {"effort": effort},
-        "stream": True,
-    }
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "Accept": "text/event-stream",
-        "User-Agent": USER_AGENT,
-    }
-    endpoint = f"{base_url}/responses"
-    print(f"  🚀 正在向 aizex 发送请求 (模型: {model}, thinking={effort}, 节点: {base_url}) ...")
-    t0 = time.time()
-    try:
-        resp = requests.post(endpoint, headers=headers, json=payload, timeout=(15, 300), stream=True)
-    except requests.exceptions.ProxyError:
-        resp = requests.post(endpoint, headers=headers, json=payload,
-                             proxies={"http": None, "https": None}, timeout=(15, 300), stream=True)
-    if resp.status_code == 400 and "tools" in payload:
-        payload.pop("tools", None)
-        resp = requests.post(endpoint, headers=headers, json=payload, timeout=(15, 300), stream=True)
-    if resp.status_code != 200:
-        raise RuntimeError(f"aizex HTTP {resp.status_code}: {resp.text[:300]}")
-
-    delta_parts = []
-    text_parts = []
-    data = {}
-    for raw in resp.iter_lines(decode_unicode=False):
-        if not raw or not raw.startswith(b"data:"):
-            continue
-        chunk = raw[5:].strip()
-        if not chunk or chunk == b"[DONE]":
-            continue
-        try:
-            ev = json.loads(chunk.decode("utf-8"))
-        except Exception:
-            continue
-        ev_type = ev.get("type", "")
-        if ev_type == "response.output_text.delta":
-            delta_parts.append(ev.get("delta", ""))
-        elif ev_type in ("response.completed", "response.incomplete"):
-            data = ev.get("response", {})
-        elif ev_type in ("response.failed", "error"):
-            raise RuntimeError(f"aizex 流式错误: {str(ev)[:250]}")
-
-    for item in data.get("output", []):
-        if item.get("type") == "message":
-            for c in item.get("content", []):
-                if c.get("type") == "output_text":
-                    text_parts.append(c.get("text", ""))
-
-    content = ("".join(text_parts) or "".join(delta_parts)).strip()
-    if len(content) < 800:
-        raise RuntimeError(f"aizex 返回内容过短 ({len(content)} 字符)")
-    print(f"  🎉 aizex 生成成功！耗时: {time.time() - t0:.2f}s, 字符数: {len(content)}")
-    return content
-
-
-def generate_digest_with_gemini(
-    global_news: List[Dict[str, str]],
-    ai_news: List[Dict[str, str]],
-    github_projects: List[Dict[str, Any]],
-    github_classic_gems: Optional[List[Dict[str, Any]]] = None
-) -> str:
-    """调用 Google Gemini 最新可用模型，配合 Google Search Grounding 深度提炼生成早报"""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("环境变量 GEMINI_API_KEY 未设置！请在 .env 或 GitHub Secrets 中配置。")
-
-    from google import genai
-    from google.genai import types
-
-    client = genai.Client(api_key=api_key)
-
-    # 动态探测候选模型列表
-    candidate_models = get_candidate_models(client)
-    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems)
-
-    # 尝试调用策略：
-    # 1. 优先按最新候选模型列表开启 Google Search Grounding (联网核实)
-    # 2. 降级备用：若联网工具受限或报错，按最新模型顺序关闭 Grounding (依托本地丰富的预抓取数据底座)
-    strategies = []
-    for m in candidate_models[:5]:
-        strategies.append((m, True))
-    for m in candidate_models[:5]:
-        strategies.append((m, False))
-
-    last_error = ""
-    for model_name, use_grounding in strategies:
-        mode_desc = f"{model_name} (联网 Grounding: {'开启' if use_grounding else '关闭'})"
-        print(f"\n[Gemini 调度] 尝试调用模型: {mode_desc} ...")
-        try:
-            config = types.GenerateContentConfig(
-                temperature=0.7,
-            )
-            if use_grounding:
-                config.tools = [types.Tool(google_search=types.GoogleSearch())]
-
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=config
-            )
-
-            if response and response.text:
-                print(f"  🎉 Gemini 提炼生成成功！实际使用模型: {model_name} (联网 Grounding: {'开启' if use_grounding else '关闭'}), 输出字符数: {len(response.text)}")
-                return response.text
-            else:
-                print(f"  [重试] 模型 {model_name} 返回内容为空，尝试下一候选策略...")
-        except Exception as e:
-            last_error = str(e)
-            print(f"  [降级原因] {mode_desc} 执行失败: {e}")
-            time.sleep(1)
-
-    raise RuntimeError(f"所有 Gemini 候选模型与调用策略均失败: {last_error[:100]}")
-
-
 def generate_digest(
     global_news: List[Dict[str, str]],
     ai_news: List[Dict[str, str]],
     github_projects: List[Dict[str, Any]],
-    github_classic_gems: Optional[List[Dict[str, Any]]] = None
+    github_classic_gems: Optional[List[Dict[str, Any]]] = None,
+    blacklist_summary: str = ""
 ) -> str:
     """
     智能大模型生成中枢：
-    支持多引擎自适应优先级调度：
-    1. 默认 PRIMARY_ENGINE=local:
-       本地 Gemini 3.8 Flash High -> aizex gpt-6.1-terra (high) -> 本地应急兜底
-    2. 若 PRIMARY_ENGINE=aizex:
-       aizex gpt-6.1-terra (high) -> 本地 Gemini 3.8 Flash -> 本地应急兜底
+    四级高可用自愈容灾调度架构：
+    1. 本地网关 (仅本机夜间且配置 LOCAL_LLM_API_KEY 时尝试；云端 Actions 或未配 Key 直接静默跳过)
+    2. 主力云端 (gpt-6.1-sol + high 深度思考，多节点轮换 + 3 次重试自愈 + CODEX/AIZEX 双 Key 互备)
+    3. 备用兜底 (DeepSeek deepseek-v4-pro)
+    4. 终极自愈 (本地多源数据底座应急早报生成)
     """
+    is_github_actions = (os.getenv("GITHUB_ACTIONS") or "").strip().lower() == "true"
     local_key  = (os.getenv("LOCAL_LLM_API_KEY") or "").strip()
+    codex_key  = (os.getenv("CODEX_API_KEY") or "").strip()
     aizex_key  = (os.getenv("AIZEX_API_KEY") or "").strip()
-    primary_engine = (os.getenv("PRIMARY_ENGINE") or "local").strip().lower()
+    deepseek_key = (os.getenv("DEEPSEEK_API_KEY") or "").strip()
+    primary_engine = (os.getenv("PRIMARY_ENGINE") or "codex").strip().lower()
 
     errors = []
 
     def try_local() -> Optional[str]:
-        if not local_key:
-            errors.append("本地网关: 未配置 LOCAL_LLM_API_KEY")
+        # 云端 Actions 环境或未配置本地 Key，直接静默跳过，绝不追加错误信息污染报告
+        if is_github_actions or not local_key:
             return None
         print("\n🧠 调度大模型引擎: 本地网关 (Gemini 3.8 Flash High)...")
         try:
-            return generate_digest_with_local(global_news, ai_news, github_projects, github_classic_gems, local_key)
+            return generate_digest_with_local(global_news, ai_news, github_projects, github_classic_gems, local_key, blacklist_summary=blacklist_summary)
         except Exception as e:
             err = f"本地网关失败: {e}"
             errors.append(err)
-            print(f"  [降级触发] {err}，自动切换至备用引擎...")
+            print(f"  [降级触发] {err}，自动切换至云端主力引擎...")
             return None
 
-    def try_aizex() -> Optional[str]:
-        if not aizex_key:
-            errors.append("aizex: 未配置 AIZEX_API_KEY")
+    def try_gpt_sol() -> Optional[str]:
+        # 搜集有效凭据列表 (CODEX_API_KEY / AIZEX_API_KEY)
+        candidate_keys = []
+        for k in [codex_key, aizex_key]:
+            if k and k not in candidate_keys:
+                candidate_keys.append(k)
+
+        if not candidate_keys:
+            errors.append("主力云端: 未配置 CODEX_API_KEY 或 AIZEX_API_KEY")
             return None
-        model_name = (os.getenv("AIZEX_MODEL") or "gpt-6.1-terra").strip()
-        effort = (os.getenv("AIZEX_EFFORT") or "high").strip().lower()
-        print(f"\n🧠 调度备用引擎: aizex {model_name} (thinking={effort})...")
+
+        model_name = (os.getenv("CODEX_MODEL") or os.getenv("AIZEX_MODEL") or "gpt-6.1-sol").strip()
+        effort = (os.getenv("CODEX_EFFORT") or os.getenv("AIZEX_EFFORT") or "high").strip().lower()
+        print(f"\n🧠 调度主力云端引擎: {model_name} (thinking={effort})...")
+
+        for idx, key in enumerate(candidate_keys, 1):
+            key_mask = key[:6] + "..." + key[-4:] if len(key) > 12 else "***"
+            if len(candidate_keys) > 1:
+                print(f"  🔑 使用凭据 [{idx}/{len(candidate_keys)}]: {key_mask}")
+            try:
+                return generate_digest_with_gpt_sol(global_news, ai_news, github_projects, github_classic_gems, key, blacklist_summary=blacklist_summary)
+            except Exception as e:
+                err = f"gpt-6.1-sol (凭据 {key_mask}) 失败: {e}"
+                errors.append(err)
+                print(f"  [降级触发] {err}")
+                if idx < len(candidate_keys):
+                    print("  🔄 尝试切换下一个有效 API Key 凭据...")
+        return None
+
+    def try_deepseek() -> Optional[str]:
+        if not deepseek_key:
+            if not is_github_actions:
+                errors.append("DeepSeek: 未配置 DEEPSEEK_API_KEY")
+            return None
+        model_name = (os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro").strip()
+        print(f"\n🧠 调度备用引擎: DeepSeek ({model_name})...")
         try:
-            return generate_digest_with_aizex(global_news, ai_news, github_projects, github_classic_gems, aizex_key)
+            return generate_digest_with_deepseek(global_news, ai_news, github_projects, github_classic_gems, deepseek_key, blacklist_summary=blacklist_summary)
         except Exception as e:
-            err = f"aizex 失败: {e}"
+            err = f"DeepSeek 失败: {e}"
             errors.append(err)
             print(f"  [降级触发] {err}，启用本地应急兜底...")
             return None
 
-    if primary_engine == "aizex":
-        order = [try_aizex, try_local]
+    # 根据运行环境与首选引擎确定调度序列
+    if primary_engine == "deepseek":
+        order = [try_deepseek, try_gpt_sol]
+    elif primary_engine == "local" and not is_github_actions and local_key:
+        order = [try_local, try_gpt_sol, try_deepseek]
     else:
-        order = [try_local, try_aizex]
+        # 默认或云端 Actions 环境：本地（若可用） -> gpt-6.1-sol (high) -> DeepSeek
+        if not is_github_actions and local_key:
+            order = [try_local, try_gpt_sol, try_deepseek]
+        else:
+            order = [try_gpt_sol, try_deepseek]
 
     for engine_fn in order:
         result = engine_fn()
@@ -1401,116 +1560,8 @@ def send_via_email(title: str, content: str) -> bool:
         return False
 
 
-def send_via_webhook(title: str, content: str) -> bool:
-    """
-    【渠道 B：0元免认证】通过企业微信 / 飞书 / 钉钉群机器人 Webhook 推送
-    """
-    webhook_url = os.getenv("WEBHOOK_URL", "").strip()
-    if not webhook_url:
-        return False
-
-    print(f"\n🤖 [渠道 B] 正在通过自定义 Webhook 机器人推送早报 ...")
-    headers = {"Content-Type": "application/json"}
-
-    # 1. 企业微信机器人 (qyapi.weixin.qq.com)
-    if "qyapi.weixin.qq.com" in webhook_url:
-        safe_content = content if len(content.encode("utf-8")) < 4000 else content[:3500] + "\n\n> ⚠️ *(早报内容较长已自动截断，完整版请查看邮件或本地 preview_digest.md)*"
-        payload = {
-            "msgtype": "markdown",
-            "markdown": {
-                "content": safe_content
-            }
-        }
-    # 2. 飞书自定义机器人 (open.feishu.cn)
-    elif "open.feishu.cn" in webhook_url:
-        payload = {
-            "msg_type": "interactive",
-            "card": {
-                "header": {
-                    "title": {
-                        "tag": "plain_text",
-                        "content": title
-                    },
-                    "template": "blue"
-                },
-                "elements": [
-                    {
-                        "tag": "markdown",
-                        "content": content
-                    }
-                ]
-            }
-        }
-    # 3. 钉钉机器人 (dingtalk.com)
-    elif "dingtalk.com" in webhook_url:
-        payload = {
-            "msgtype": "markdown",
-            "markdown": {
-                "title": title,
-                "text": content
-            }
-        }
-    # 4. 通用 Webhook 格式
-    else:
-        payload = {
-            "title": title,
-            "content": content
-        }
-
-    try:
-        resp = requests.post(webhook_url, json=payload, headers=headers, timeout=20)
-        if resp.status_code == 200:
-            res_data = resp.json() if resp.text else {}
-            errcode = res_data.get("errcode", res_data.get("code", res_data.get("StatusCode", 0)))
-            if errcode == 0:
-                print("  ✅ Webhook 机器人推送成功！")
-                return True
-            else:
-                print(f"  ❌ Webhook 返回业务错误 (code={errcode}): {res_data}")
-                return False
-        else:
-            print(f"  ❌ Webhook HTTP 请求异常 ({resp.status_code}): {resp.text[:200]}")
-            return False
-    except Exception as e:
-        print(f"  ❌ Webhook 推送异常: {e}")
-        return False
-
-
-def send_via_pushplus(title: str, content: str) -> bool:
-    """【渠道 C】通过 PushPlus (推送加) 发送到微信服务号"""
-    token = os.getenv("PUSHPLUS_TOKEN", "").strip()
-    if not token:
-        return False
-
-    push_url = "http://www.pushplus.plus/send"
-    payload = {
-        "token": token,
-        "title": title,
-        "content": content,
-        "template": "markdown"
-    }
-
-    print(f"\n📨 [渠道 C] 正在向 PushPlus 发起推送 (微信模板: markdown, 标题: {title}) ...")
-    try:
-        resp = requests.post(push_url, json=payload, headers={"User-Agent": USER_AGENT}, timeout=20)
-        if resp.status_code == 200:
-            res_data = resp.json()
-            if res_data.get("code") == 200:
-                print("  ✅ PushPlus 微信推送成功！响应:", res_data.get("msg", "OK"))
-                return True
-            else:
-                print(f"  ❌ PushPlus 推送返回业务错误 (code={res_data.get('code')}): {res_data.get('msg')}")
-                return False
-        else:
-            print(f"  ❌ PushPlus HTTP 请求异常 (status_code={resp.status_code}): {resp.text}")
-            return False
-    except Exception as e:
-        print(f"  ❌ PushPlus 推送失败 (网络错误): {e}")
-        return False
-
-
 def dispatch_notifications(content: str) -> bool:
-    """统一分发早报到所有已配置的推送渠道，并保存本地 preview_digest.md 预览与归档"""
+    """分发早报到 QQ 邮箱，并保存本地 preview_digest.md 预览与归档"""
     now_bj = datetime.now(BEIJING_TZ)
     title = f"每日 AI & 全球资讯早报 | {now_bj.strftime('%Y-%m-%d')}"
 
@@ -1523,35 +1574,17 @@ def dispatch_notifications(content: str) -> bool:
     except Exception as e:
         print(f"  [警告] 保存本地 preview_digest.md 失败: {e}")
 
-    # 2. 检查已配置渠道并并发/依序推送
-    email_enabled = bool(os.getenv("EMAIL_SENDER") and os.getenv("EMAIL_PASSWORD"))
-    webhook_enabled = bool(os.getenv("WEBHOOK_URL"))
-    pushplus_enabled = bool(os.getenv("PUSHPLUS_TOKEN"))
+    # 持久化去重记录
+    record_history_seen(now_bj.strftime("%Y-%m-%d"), content)
 
-    if not (email_enabled or webhook_enabled or pushplus_enabled):
-        print("\n⚠️ [提示] 未检测到任何推送配置（EMAIL_SENDER / WEBHOOK_URL / PUSHPLUS_TOKEN）。")
-        print("   -> 已跳过网络推送，您可直接打开 preview_digest.md 查看生成的早报。")
-        print("   -> 【0元免费方案推荐】：配置 EMAIL_SENDER 和 EMAIL_PASSWORD，微信开启「QQ邮箱提醒」插件即可秒级接收微信弹窗提醒！")
+    # 2. 检查 QQ 邮箱推送配置
+    email_enabled = bool(os.getenv("EMAIL_SENDER") and os.getenv("EMAIL_PASSWORD"))
+    if not email_enabled:
+        print("\n⚠️ [提示] 未配置 EMAIL_SENDER 或 EMAIL_PASSWORD，跳过邮件推送。")
+        print("   -> 您可直接打开 preview_digest.md 查看生成的早报。")
         return True
 
-    success_count = 0
-    # 渠道 A：邮件直推 + 微信「QQ邮箱提醒」（强烈推荐，0元免认证）
-    if email_enabled:
-        if send_via_email(title, content):
-            success_count += 1
-
-    # 渠道 B：企业微信 / 飞书群机器人（0元免认证）
-    if webhook_enabled:
-        if send_via_webhook(title, content):
-            success_count += 1
-
-    # 渠道 C：PushPlus 推送加（若用户已实名认证）
-    if pushplus_enabled:
-        if send_via_pushplus(title, content):
-            success_count += 1
-
-    print(f"\n📢 多渠道分发完成：已配置渠道中成功送达 {success_count} 个")
-    return success_count > 0
+    return send_via_email(title, content)
 
 
 # ==================== 主流程执行入口 ====================
@@ -1572,22 +1605,36 @@ def main():
             print("\n🎉 今日早报全流程顺利执行完毕！")
             return
 
-    # 1. 数据采集
-    global_news = collect_global_news()
-    ai_news = collect_ai_news()
-    github_trending = collect_github_trending()
+    target_date_str = report_now().strftime("%Y-%m-%d")
+
+    # 预先扫描跨天历史记录（排查前 5 天已报道事件与开源项目）
+    history_info = scan_recent_history(days=5, exclude_date=target_date_str if prebuild else None)
+    seen_urls = history_info["seen_urls"]
+    seen_repos = history_info["seen_repos"]
+    seen_titles = history_info["seen_titles"]
+    blacklist_summary = history_info["blacklist_summary"]
+    print(f"\n🔍 [跨天去重] 已扫描近 5 天历史数据: 提取到 {len(seen_repos)} 个已推仓库, {len(seen_urls)} 个已发链接, {len(seen_titles)} 条历史标题")
+
+    # 1. 数据采集（应用跨天排重）
+    global_news = collect_global_news(seen_urls=seen_urls, seen_titles=seen_titles)
+    ai_news = collect_ai_news(seen_urls=seen_urls, seen_titles=seen_titles)
+    github_trending = collect_github_trending(seen_repos=seen_repos)
     trending_names = {p.get("name", "").lower() for p in github_trending}
-    github_classic_gems = fetch_github_classic_gems(exclude_names=trending_names)
+    # 经典宝藏排除 今日 trending + 近 5 天历史推荐的 repo
+    exclude_classic_names = trending_names | seen_repos
+    github_classic_gems = fetch_github_classic_gems(exclude_names=exclude_classic_names)
 
     total_scraped = len(global_news) + len(ai_news) + len(github_trending) + len(github_classic_gems)
     print(f"\n📊 数据采集完成，总共获得 {total_scraped} 条全网最新热点与经典宝藏数据底座。")
 
-    # 2. 大模型智能提炼 (支持 Codex / DeepSeek / Gemini / 本地应急兜底)
+    # 2. 大模型智能提炼 (支持 local / aizex / 本地应急兜底)
     print("\n🧠 启动大模型智能提炼与分析引擎...")
-    digest_content = generate_digest(global_news, ai_news, github_trending, github_classic_gems)
+    digest_content = generate_digest(
+        global_news, ai_news, github_trending, github_classic_gems, blacklist_summary=blacklist_summary
+    )
 
     if prebuild:
-        target = report_now().strftime("%Y-%m-%d")
+        target = target_date_str
         if "【大模型接口提示】" in digest_content or "大模型接口提示" in digest_content[:600]:
             print("\n❌ 预生成失败：大模型未返回有效内容，不落盘（避免云端误用兜底稿）。")
             sys.exit(1)
@@ -1596,6 +1643,18 @@ def main():
         with open(path, "w", encoding="utf-8") as f:
             f.write(digest_content)
         print(f"\n📦 已预生成 {target} 早报: {path} ({len(digest_content)} 字符)")
+
+        # 同步写入 preview_digest.md 供本地随时查看最新预览
+        preview_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "preview_digest.md")
+        try:
+            with open(preview_path, "w", encoding="utf-8") as pf:
+                pf.write(digest_content)
+            print(f"📄 已同步更新本地预览文件: {preview_path}")
+        except Exception as e:
+            print(f"  [警告] 保存本地 preview_digest.md 失败: {e}")
+
+        # 持久化更新历史去重库
+        record_history_seen(target, digest_content)
         return
 
     # 3. 多渠道推送分发与本地落地
