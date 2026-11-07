@@ -3,7 +3,7 @@
 """
 每日 AI & 全球资讯早报 (Daily AI & Global Digest)
 --------------------------------------------------
-自动化多源数据抓取 -> 大模型智能提炼 (Codex 6.1-sol / DeepSeek V4 Pro / Gemini) -> 多渠道推送
+自动化多源数据抓取 -> 大模型智能提炼 (Gemini 3.8 Flash / GPT-6.1-sol High) -> 多渠道推送
 
 核心功能板块：
 1. 🌍 全球时事（前因后果、多方视角、背景脉络与权威来源）
@@ -1090,75 +1090,36 @@ generate_digest_with_aizex = generate_digest_with_gpt_sol
 generate_digest_with_codex = generate_digest_with_gpt_sol
 
 
-def generate_digest_with_deepseek(
-    global_news: List[Dict[str, str]],
-    ai_news: List[Dict[str, str]],
-    github_projects: List[Dict[str, Any]],
-    github_classic_gems: Optional[List[Dict[str, Any]]],
-    api_key: str,
-    blacklist_summary: str = ""
-) -> str:
-    """调用 DeepSeek 官方 API (或 OpenAI 兼容格式接口 deepseek-v4-pro) 生成高质量早报 (第三顺位兜底)"""
-    base_url = (os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").strip().rstrip("/")
-    model = (os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro").strip()
+def extract_engine_label(text: str) -> tuple:
+    """
+    检查 Markdown 文本开头是否包含 <!-- ENGINE_LABEL: ... --> 元数据注释。
+    返回 (clean_text, engine_label)。
+    确保跨端（如本地夜间预构建落盘后次日由云端读取推送）时，能 100% 精确还原实际执笔模型。
+    """
+    if not text:
+        return "", "本地多源数据底座"
+    m = re.match(r"^\s*<!--\s*ENGINE_LABEL:\s*([^\n>]+?)\s*-->\s*\n?", text, re.IGNORECASE)
+    if m:
+        label = m.group(1).strip()
+        clean = text[m.end():]
+        return clean, label
 
-    url = f"{base_url}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "User-Agent": USER_AGENT,
-    }
+    # 启发式兜底判断
+    if "【大模型接口提示】" in text or "本地多源数据底座为您完整生成" in text:
+        return text, "本地多源数据底座"
+    if "Gemini" in text[:300]:
+        return text, "Gemini 3.8 Flash"
+    return text, "GPT-6.1-sol (High)"
 
-    prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems, blacklist_summary=blacklist_summary)
 
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "你是一位殿堂级科技主编与资深国际政治经济观察家。请基于提供的数据底座，"
-                    "为微信移动端读者精编一份结构严谨、前因后果清晰、大白话解读开源项目、兼具深度与可读性的每日 AI & 全球资讯早报。"
-                    "【完整性铁律】：你必须按顺序完整撰写并输出全部三大板块："
-                    "1.【🌍 板块一：全球时事】；2.【🤖 板块二：AI 核心御三家 & 英伟达/特斯拉深度追踪】；3.【🔥 板块三：GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）】。"
-                    "严禁中途截断，三大板块缺一不可！"
-                )
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        "temperature": 0.3,
-        "max_tokens": 8192
-    }
-
-    print(f"  🚀 正在向 DeepSeek API 发送生成请求 (模型: {model}, 接口: {url}, 超时设定: 240s) ...")
-    t0 = time.time()
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=240)
-    except requests.exceptions.ProxyError:
-        print(f"  [代理自愈] 本地代理异常，自动切换为直连请求 DeepSeek API ...")
-        resp = requests.post(url, headers=headers, json=payload, proxies={"http": None, "https": None}, timeout=240)
-    elapsed = time.time() - t0
-    if resp.status_code == 200:
-        data = resp.json()
-        choices = data.get("choices", [])
-        if not choices:
-            raise RuntimeError(f"DeepSeek 返回数据中无 choices: {data}")
-        msg = choices[0].get("message", {})
-        content = msg.get("content") or ""
-        if not content and msg.get("reasoning_content"):
-            content = msg.get("reasoning_content")
-        content = (content or "").strip()
-        if len(content) < 800:
-            raise RuntimeError(f"DeepSeek 返回内容过短 ({len(content)} 字符)")
-        usage = data.get("usage", {})
-        print(f"  🎉 DeepSeek 生成成功！耗时: {elapsed:.2f}s, 模型: {model}, 消耗 Token: {usage.get('total_tokens', 'N/A')}, 字符数: {len(content)}")
-        return content
-    else:
-        err_msg = f"HTTP {resp.status_code}: {resp.text[:300]}"
-        raise RuntimeError(err_msg)
+def tag_content_with_engine(content: str, label: str) -> str:
+    """在 Markdown 开头打入元数据注释，并在顶部导语处明确标注实际执笔模型"""
+    meta_tag = f"<!-- ENGINE_LABEL: {label} -->\n"
+    pattern = r"(> 💡 \*\*今日早报速览\*\*：[^\n]+)"
+    if re.search(pattern, content):
+        if "执笔模型" not in content[:600]:
+            content = re.sub(pattern, rf"\1（执笔模型：**{label}**）", content, count=1)
+    return meta_tag + content
 
 
 def generate_digest(
@@ -1169,36 +1130,33 @@ def generate_digest(
     blacklist_summary: str = ""
 ) -> str:
     """
-    智能大模型生成中枢：
-    四级高可用自愈容灾调度架构：
-    1. 本地网关 (仅本机夜间且配置 LOCAL_LLM_API_KEY 时尝试；云端 Actions 或未配 Key 直接静默跳过)
-    2. 主力云端 (gpt-6.1-sol + high 深度思考，多节点轮换 + 3 次重试自愈 + CODEX/AIZEX 双 Key 互备)
-    3. 备用兜底 (DeepSeek deepseek-v4-pro)
-    4. 终极自愈 (本地多源数据底座应急早报生成)
+    纯粹二级高可用自愈容灾调度架构：
+    1. 第一级（本地优先）：本地网关 (Gemini 3.8 Flash，仅本机且配置 LOCAL_LLM_API_KEY 时生效；云端 Actions 或未配 Key 静默跳过)
+    2. 第二级（云端/备援）：GPT-6.1-sol (High) (gpt-6.1-sol + high 深度思考，多节点轮换 + 3 次重试自愈 + CODEX/AIZEX 双 Key 互备)
+    3. 终极自愈兜底：本地多源数据底座应急早报生成
     """
     is_github_actions = (os.getenv("GITHUB_ACTIONS") or "").strip().lower() == "true"
     local_key  = (os.getenv("LOCAL_LLM_API_KEY") or "").strip()
     codex_key  = (os.getenv("CODEX_API_KEY") or "").strip()
     aizex_key  = (os.getenv("AIZEX_API_KEY") or "").strip()
-    deepseek_key = (os.getenv("DEEPSEEK_API_KEY") or "").strip()
-    primary_engine = (os.getenv("PRIMARY_ENGINE") or "codex").strip().lower()
 
     errors = []
 
-    def try_local() -> Optional[str]:
-        # 云端 Actions 环境或未配置本地 Key，直接静默跳过，绝不追加错误信息污染报告
+    def try_local() -> Optional[tuple]:
+        # 云端 Actions 环境或未配置本地 Key，直接静默跳过，绝不追加任何错误信息
         if is_github_actions or not local_key:
             return None
-        print("\n🧠 调度大模型引擎: 本地网关 (Gemini 3.8 Flash High)...")
+        print("\n🧠 调度大模型引擎: 本地网关 (Gemini 3.8 Flash)...")
         try:
-            return generate_digest_with_local(global_news, ai_news, github_projects, github_classic_gems, local_key, blacklist_summary=blacklist_summary)
+            content = generate_digest_with_local(global_news, ai_news, github_projects, github_classic_gems, local_key, blacklist_summary=blacklist_summary)
+            return content, "Gemini 3.8 Flash"
         except Exception as e:
             err = f"本地网关失败: {e}"
             errors.append(err)
             print(f"  [降级触发] {err}，自动切换至云端主力引擎...")
             return None
 
-    def try_gpt_sol() -> Optional[str]:
+    def try_gpt_sol() -> Optional[tuple]:
         # 搜集有效凭据列表 (CODEX_API_KEY / AIZEX_API_KEY)
         candidate_keys = []
         for k in [codex_key, aizex_key]:
@@ -1209,60 +1167,40 @@ def generate_digest(
             errors.append("主力云端: 未配置 CODEX_API_KEY 或 AIZEX_API_KEY")
             return None
 
-        model_name = (os.getenv("CODEX_MODEL") or os.getenv("AIZEX_MODEL") or "gpt-6.1-sol").strip()
-        effort = (os.getenv("CODEX_EFFORT") or os.getenv("AIZEX_EFFORT") or "high").strip().lower()
-        print(f"\n🧠 调度主力云端引擎: {model_name} (thinking={effort})...")
+        print("\n🧠 调度主力云端引擎: GPT-6.1-sol (High)...")
 
         for idx, key in enumerate(candidate_keys, 1):
             key_mask = key[:6] + "..." + key[-4:] if len(key) > 12 else "***"
             if len(candidate_keys) > 1:
                 print(f"  🔑 使用凭据 [{idx}/{len(candidate_keys)}]: {key_mask}")
             try:
-                return generate_digest_with_gpt_sol(global_news, ai_news, github_projects, github_classic_gems, key, blacklist_summary=blacklist_summary)
+                content = generate_digest_with_gpt_sol(global_news, ai_news, github_projects, github_classic_gems, key, blacklist_summary=blacklist_summary)
+                return content, "GPT-6.1-sol (High)"
             except Exception as e:
-                err = f"gpt-6.1-sol (凭据 {key_mask}) 失败: {e}"
+                err = f"GPT-6.1-sol (凭据 {key_mask}) 失败: {e}"
                 errors.append(err)
                 print(f"  [降级触发] {err}")
                 if idx < len(candidate_keys):
                     print("  🔄 尝试切换下一个有效 API Key 凭据...")
         return None
 
-    def try_deepseek() -> Optional[str]:
-        if not deepseek_key:
-            if not is_github_actions:
-                errors.append("DeepSeek: 未配置 DEEPSEEK_API_KEY")
-            return None
-        model_name = (os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro").strip()
-        print(f"\n🧠 调度备用引擎: DeepSeek ({model_name})...")
-        try:
-            return generate_digest_with_deepseek(global_news, ai_news, github_projects, github_classic_gems, deepseek_key, blacklist_summary=blacklist_summary)
-        except Exception as e:
-            err = f"DeepSeek 失败: {e}"
-            errors.append(err)
-            print(f"  [降级触发] {err}，启用本地应急兜底...")
-            return None
-
-    # 根据运行环境与首选引擎确定调度序列
-    if primary_engine == "deepseek":
-        order = [try_deepseek, try_gpt_sol]
-    elif primary_engine == "local" and not is_github_actions and local_key:
-        order = [try_local, try_gpt_sol, try_deepseek]
+    # 调度序列：本地环境优先尝试本地网关，云端 Actions 优先尝试云端 GPT-6.1-sol (High)
+    if not is_github_actions and local_key:
+        order = [try_local, try_gpt_sol]
     else:
-        # 默认或云端 Actions 环境：本地（若可用） -> gpt-6.1-sol (high) -> DeepSeek
-        if not is_github_actions and local_key:
-            order = [try_local, try_gpt_sol, try_deepseek]
-        else:
-            order = [try_gpt_sol, try_deepseek]
+        order = [try_gpt_sol]
 
     for engine_fn in order:
-        result = engine_fn()
-        if result:
-            return result
+        res = engine_fn()
+        if res:
+            content, label = res
+            return tag_content_with_engine(content, label)
 
     # 终极兜底：本地高质量数据底座应急早报生成
     combined_reason = " | ".join(errors)
     print(f"\n⚠️ [自动容灾] 所有大模型引擎均未响应，启用本地多源数据底座应急早报生成引擎 (原因: {combined_reason[:150]})...")
-    return generate_fallback_digest(global_news, ai_news, github_projects, github_classic_gems, reason=combined_reason)
+    fallback_content = generate_fallback_digest(global_news, ai_news, github_projects, github_classic_gems, reason=combined_reason)
+    return tag_content_with_engine(fallback_content, "本地多源数据底座")
 
 
 def generate_fallback_digest(
@@ -1367,8 +1305,15 @@ def generate_fallback_digest(
 
 
 # ==================== 多渠道推送模块 (0元免费/多通道共存) ====================
-def markdown_to_html(md_text: str, title: str) -> str:
+def markdown_to_html(md_text: str, title: str, engine_label: Optional[str] = None) -> str:
     """将 Markdown 早报转换为高颜值移动端自适应 HTML 邮件卡片模板"""
+    clean_text, extracted_label = extract_engine_label(md_text)
+    active_label = engine_label or extracted_label or "GPT-6.1-sol (High)"
+    if "本地多源数据底座" in active_label:
+        sub_title = f"由 {active_label} 聚合生成 · 自动化每日送达"
+    else:
+        sub_title = f"由 {active_label} 深度提炼 · 自动化每日送达"
+
     html_lines = []
     in_list = False
 
@@ -1389,7 +1334,7 @@ def markdown_to_html(md_text: str, title: str) -> str:
         )
         return text
 
-    for line in md_text.splitlines():
+    for line in clean_text.splitlines():
         line_s = line.strip()
         if not line_s:
             if in_list:
@@ -1475,7 +1420,7 @@ def markdown_to_html(md_text: str, title: str) -> str:
   <div style="background:linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #3b82f6 100%);padding:22px 24px;color:#ffffff;">
     <div style="font-size:12px;letter-spacing:1px;opacity:0.9;text-transform:uppercase;font-weight:600;">DAILY INTELLIGENCE DIGEST</div>
     <h1 style="margin:6px 0 0;font-size:20px;font-weight:700;color:#ffffff;line-height:1.3;">🌅 {title}</h1>
-    <div style="font-size:13px;opacity:0.85;margin-top:6px;">由 Codex 6.1-sol & DeepSeek V4 Pro 深度提炼 · 自动化每日送达</div>
+    <div style="font-size:13px;opacity:0.85;margin-top:6px;">{sub_title}</div>
   </div>
   <div style="padding:20px 24px;">
     {body_html}
@@ -1531,16 +1476,18 @@ def send_via_email(title: str, content: str) -> bool:
     receiver = os.getenv("EMAIL_RECEIVER", "").strip() or sender
     host, port, use_ssl = resolve_smtp_config(sender)
 
-    print(f"\n📧 [渠道 A] 正在通过邮件推送早报 (服务器: {host}:{port}, 发件: {sender} -> 收件: {receiver}) ...")
+    clean_content, engine_label = extract_engine_label(content)
+
+    print(f"\n📧 [渠道 A] 正在通过邮件推送早报 (服务器: {host}:{port}, 发件: {sender} -> 收件: {receiver}, 执笔模型: {engine_label}) ...")
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = Header(title, "utf-8")
         msg["From"] = formataddr((str(Header("每日 AI & 全球早报", "utf-8")), sender))
         msg["To"] = receiver
 
-        # 兼容纯文本与精美 HTML 双格式
-        html_body = markdown_to_html(content, title)
-        msg.attach(MIMEText(content, "plain", "utf-8"))
+        # 兼容纯文本与精美 HTML 双格式 (剥离元数据注释，准确渲染执笔模型名称)
+        html_body = markdown_to_html(clean_content, title, engine_label=engine_label)
+        msg.attach(MIMEText(clean_content, "plain", "utf-8"))
         msg.attach(MIMEText(html_body, "html", "utf-8"))
 
         if use_ssl:
@@ -1562,6 +1509,7 @@ def send_via_email(title: str, content: str) -> bool:
 
 def dispatch_notifications(content: str) -> bool:
     """分发早报到 QQ 邮箱，并保存本地 preview_digest.md 预览与归档"""
+    clean_content, engine_label = extract_engine_label(content)
     now_bj = datetime.now(BEIJING_TZ)
     title = f"每日 AI & 全球资讯早报 | {now_bj.strftime('%Y-%m-%d')}"
 
@@ -1570,12 +1518,12 @@ def dispatch_notifications(content: str) -> bool:
     try:
         with open(preview_path, "w", encoding="utf-8") as f:
             f.write(content)
-        print(f"\n📄 最新早报已同步保存至本地预览文件: {preview_path}")
+        print(f"\n📄 最新早报已同步保存至本地预览文件: {preview_path} (执笔模型: {engine_label})")
     except Exception as e:
         print(f"  [警告] 保存本地 preview_digest.md 失败: {e}")
 
     # 持久化去重记录
-    record_history_seen(now_bj.strftime("%Y-%m-%d"), content)
+    record_history_seen(now_bj.strftime("%Y-%m-%d"), clean_content)
 
     # 2. 检查 QQ 邮箱推送配置
     email_enabled = bool(os.getenv("EMAIL_SENDER") and os.getenv("EMAIL_PASSWORD"))
@@ -1659,6 +1607,14 @@ def main():
 
     # 3. 多渠道推送分发与本地落地
     dispatch_notifications(digest_content)
+    try:
+        os.makedirs(PREBUILT_DIR, exist_ok=True)
+        today_path = os.path.join(PREBUILT_DIR, f"{target_date_str}.md")
+        with open(today_path, "w", encoding="utf-8") as f:
+            f.write(digest_content)
+        print(f"📦 已将今日早报归档至本地 prebuilt 目录: {today_path}")
+    except Exception as e:
+        print(f"  [警告] 归档 prebuilt 失败: {e}")
 
     print("\n🎉 今日早报全流程顺利执行完毕！")
 
