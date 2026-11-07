@@ -16,7 +16,6 @@ on:
           - codex
           - aizex
           - local
-          - deepseek
 
 jobs:
   build-and-send:
@@ -49,9 +48,6 @@ jobs:
           AIZEX_BASE_URL: ${{ secrets.AIZEX_BASE_URL }}
           AIZEX_MODEL: ${{ secrets.AIZEX_MODEL || 'gpt-6.1-sol' }}
           AIZEX_EFFORT: ${{ secrets.AIZEX_EFFORT || 'high' }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
-          DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL || 'deepseek-v4-pro' }}
           LOCAL_LLM_API_KEY: ${{ secrets.LOCAL_LLM_API_KEY }}
           LOCAL_LLM_BASE_URL: ${{ secrets.LOCAL_LLM_BASE_URL }}
           LOCAL_LLM_MODEL: ${{ secrets.LOCAL_LLM_MODEL }}
