@@ -7,7 +7,7 @@
 
 核心功能板块：
 1. 🌍 全球时事（前因后果、多方视角、背景脉络与权威来源）
-2. 🤖 AI 核心御三家 & 英伟达/特斯拉深度追踪（OpenAI/Codex, Google/Gemini, Anthropic/Claude + NVIDIA/Tesla）
+2. 🤖 AI 核心御三家 & 科技四巨头深度追踪（OpenAI/Codex, Google/Gemini, Anthropic/Claude + NVIDIA/Tesla/华为/苹果）
 3. 🔥 GitHub 开源项目寻宝（今日飙升热榜 + 每日宝藏/殿堂级神器精选）
 """
 
@@ -484,8 +484,8 @@ def collect_ai_news(
     seen_urls: Optional[Set[str]] = None,
     seen_titles: Optional[Set[str]] = None
 ) -> List[Dict[str, str]]:
-    """采集 AI 核心御三家（OpenAI/Google/Anthropic）及英伟达/特斯拉双巨头最新要闻"""
-    print("\n[2/4] 正在采集【AI 御三家 & 英伟达/特斯拉双巨头】最新资讯...")
+    """采集 AI 核心御三家（OpenAI/Google/Anthropic）及英伟达/特斯拉/华为/苹果四巨头最新要闻"""
+    print("\n[2/4] 正在采集【AI 御三家 & 英伟达/特斯拉/华为/苹果】最新资讯...")
     all_ai_items = []
     current_seen_titles = set()
 
@@ -504,7 +504,7 @@ def collect_ai_news(
     for it in openai_feed:
         add_filtered_item(it)
 
-    # 2. Google News 专项靶向检索（聚焦 AI 御三家 + 英伟达/特斯拉）
+    # 2. Google News 专项靶向检索（聚焦 AI 御三家 + 英伟达/特斯拉/华为/苹果）
     targeted_queries = [
         # AI 御三家
         ('("OpenAI" OR "GPT" OR "Codex") when:2d', "OpenAI / GPT / Codex 检索", "en-US", "US:en"),
@@ -516,6 +516,12 @@ def collect_ai_news(
         # 特斯拉 (Tesla) 自动驾驶与具身智能
         ('("Tesla" OR "FSD" OR "Optimus" OR "Robotaxi" OR "Elon Musk") when:2d', "Tesla / 特斯拉智能 (Global)", "en-US", "US:en"),
         ('("特斯拉" OR "FSD" OR "Optimus" OR "马斯克") when:2d', "特斯拉 / FSD / 具身智能 (中文热点)", "zh-CN", "CN:zh-Hans"),
+        # 华为 (Huawei) 鸿蒙、昇腾与终端
+        ('("Huawei" OR "HarmonyOS" OR "Ascend") when:2d', "Huawei / 华为 (Global)", "en-US", "US:en"),
+        ('("华为" OR "鸿蒙" OR "昇腾" OR "余承东") when:2d', "华为 / 鸿蒙 / 昇腾 (中文热点)", "zh-CN", "CN:zh-Hans"),
+        # 苹果 (Apple) 设备、芯片与 Apple Intelligence
+        ('("Apple Inc" OR "iPhone" OR "Apple Intelligence" OR "Tim Cook" OR "macOS") when:2d', "Apple / 苹果 (Global)", "en-US", "US:en"),
+        ('("苹果公司" OR "iPhone" OR "库克" OR "Apple Intelligence") when:2d', "苹果 / iPhone (中文热点)", "zh-CN", "CN:zh-Hans"),
     ]
 
     for q, label, hl, ceid in targeted_queries:
@@ -530,7 +536,7 @@ def collect_ai_news(
     for it in hn_items:
         add_filtered_item(it)
 
-    print(f"  => AI 核心御三家与英伟达/特斯拉汇总去重后共 {len(all_ai_items)} 条数据底座")
+    print(f"  => AI 核心御三家与英伟达/特斯拉/华为/苹果汇总去重后共 {len(all_ai_items)} 条数据底座")
     return all_ai_items
 
 
@@ -809,7 +815,7 @@ def build_digest_prompt(
     context_data = {
         "report_date": f"{date_str} {weekday_str} (北京时间)",
         "raw_global_news": global_news[:14],
-        "raw_ai_news": ai_news[:16],
+        "raw_ai_news": ai_news[:80],
         "raw_github_trending": github_projects[:10],
         "raw_github_classic_gems": github_classic_gems[:8]
     }
@@ -851,16 +857,18 @@ def build_digest_prompt(
   - **多方视角与深层影响**：各方表态如何？对全球经济、产业链格局或普通大众有何长远影响？
   - **权威来源**：在末尾必须附带可点击的 Markdown 链接，如 `[🔗 来源：BBC](链接)`。
 
-#### 🤖 板块二：AI 核心御三家 & 英伟达/特斯拉深度追踪
+#### 🤖 板块二：AI 核心御三家 & 科技四巨头深度追踪
 - **【彻底移除原福利专栏】**：坚决不输出任何“今日福利/优惠活动/白嫖羊毛”内容，全力聚焦前沿科技攻防与产业风云！
 - **【宁缺毋滥与反假大空准则】**：
   若当日某细分公司（如特斯拉/马斯克或某家御三家）在提供的数据底座中无实质性重大新进展，**严禁使用官网主页链接（如 https://www.tesla.com、https://www.nvidia.com）或假大空的套话套词强行凑数**！可直接将该名额让渡给其他有重大突破的 AI 实验室、前沿开源模型、芯片算力架构动态或具身智能进展，或者如实写明今日无重大动向并聚焦其他核心看点。
 - 必须严格分为以下两个子部分输出：
   1. **🧠 AI 大模型与工具御三家（GPT/Codex、Gemini/Antigravity、Claude）**：
      - 提炼 OpenAI、Google、Anthropic 三家最新的模型发布、能力升级、API 迭代、IDE/Agent 生态及核心战略进展。
-  2. **⚡ 算力与具身智能双巨头（英伟达 NVIDIA & 特斯拉 Tesla）**：
+  2. **⚡ 科技四巨头（英伟达 NVIDIA / 特斯拉 Tesla / 华为 Huawei / 苹果 Apple）**：
      - **英伟达 (NVIDIA)**：老黄最新动向、AI 算力芯片（Blackwell/Rubin）、CUDA 生态、网络互联架构与市场催化剂。
      - **特斯拉 (Tesla)**：FSD 自动驾驶落地、Optimus 仿生机器人、Robotaxi 车队、工程突破与战略动作。
+     - **华为 (Huawei)**：鸿蒙 HarmonyOS 生态、昇腾 AI 芯片与算力、Mate/Pura 等终端新品、问界等智能汽车业务与重大战略动作。
+     - **苹果 (Apple)**：iPhone/Mac 等新品、自研芯片、Apple Intelligence 与 Siri 的 AI 进展、iOS 系统更新与重大战略动作。
      - 每条均附带可点击的真实来源链接，如 `[🔗 查看原文](链接)`。
 
 #### 🔥 板块三：GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）
@@ -870,8 +878,8 @@ def build_digest_prompt(
   - 严禁用一个术语去解释另一个术语；严禁只翻译 GitHub 英文简介。
   - 若某项目纯粹是给程序员用的开发工具，也要讲清“程序员拿它干嘛、对普通人间接意味着什么”，并在门槛里如实标注“普通人基本用不上”。
 - 必须严格分为以下两个子部分输出：
-  1. **📈 今日飙升热榜（精选 4~5 个近期暴涨的新锐项目）**：
-     - 从 `raw_github_trending` 中挑选最惊艳的 4~5 个项目，优先挑普通人能直接用上或能看懂意义的项目。
+  1. **📈 今日飙升热榜（固定精选 3 个近期暴涨的新锐项目）**：
+     - 从 `raw_github_trending` 中挑选最惊艳的 3 个项目，优先挑普通人能直接用上或能看懂意义的项目。
      - 格式规范（每个项目 250~350 字）：
        `### 序号. [项目名](链接) 🌟 今日 +新增Stars / 总Stars | 语言`
        - **📌 一句话说清**：不含任何术语，像跟爸妈解释一样说它是个什么东西。
@@ -894,7 +902,7 @@ def build_digest_prompt(
 1. 语言：通俗、生动、凝练的简体中文。
 2. 格式：清晰优雅的 Markdown 格式（使用 `#`, `##`, `###`, `**加粗**`, `- 列表`, `>` 引用块）。
 3. 避免在微信中渲染效果差的复杂 HTML 语法或多列宽表格，以引用卡片和列表为主，确保手机小屏沉浸阅读。
-4. 【完整性铁律】：必须完整输出全部三大板块（板块一：全球时事、板块二：AI 御三家 + 英伟达/特斯拉、板块三：GitHub 飙升热榜 + 每日宝藏推荐），切勿写得冗长导致后半部分被截断！板块一、二每条控制在 150~200 字精准提炼；板块三按上面规定的字数写足，宁可少选一个项目也要把每个项目讲透。
+4. 【完整性铁律】：必须完整输出全部三大板块（板块一：全球时事、板块二：AI 御三家 + 英伟达/特斯拉/华为/苹果、板块三：GitHub 飙升热榜 + 每日宝藏推荐），切勿写得冗长导致后半部分被截断！板块一、二每条控制在 150~200 字精准提炼；板块三按上面规定的字数写足，宁可少选一个项目也要把每个项目讲透。
 5. 【纯净内容准则】：坚决禁止输出任何编者说明、数据底座局限性或未联网说明，导语之后直接切入板块一正文。
 """
     return prompt
@@ -918,7 +926,7 @@ def generate_digest_with_local(
             {"role": "system", "content": (
                 "你是一位殿堂级科技主编与资深国际政治经济观察家。请基于提供的数据底座，"
                 "为移动端读者精编一份结构严谨、前因后果清晰、大白话解读开源项目、兼具深度与可读性的每日 AI & 全球资讯早报。"
-                "【完整性铁律】：必须按顺序完整输出三大板块：1.全球时事；2.AI 核心御三家 & 英伟达/特斯拉深度追踪；"
+                "【完整性铁律】：必须按顺序完整输出三大板块：1.全球时事；2.AI 核心御三家 & 科技四巨头（英伟达/特斯拉/华为/苹果）深度追踪；"
                 "3.GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）。严禁截断、严禁输出任何免责声明。"
             )},
             {"role": "user", "content": prompt}
@@ -1234,7 +1242,7 @@ def generate_fallback_digest(
     lines = [
         f"# 🌅 每日 AI & 全球资讯早报 | {date_str} {weekday_str}",
         "",
-        "> 💡 **今日早报速览**：多源实时资讯已采集就绪，为您精选全球重大时事、AI 御三家与算力具身智能双巨头动向，以及 GitHub 热门开源黑马与经典宝藏神器。",
+        "> 💡 **今日早报速览**：多源实时资讯已采集就绪，为您精选全球重大时事、AI 御三家与英伟达/特斯拉/华为/苹果四巨头动向，以及 GitHub 热门开源黑马与经典宝藏神器。",
         ""
     ]
 
@@ -1260,7 +1268,7 @@ def generate_fallback_digest(
         lines.append("")
 
     lines.extend([
-        "## 🤖 板块二：AI 核心御三家 & 英伟达/特斯拉深度追踪",
+        "## 🤖 板块二：AI 核心御三家 & 科技四巨头深度追踪",
         "",
         "### 🧠 AI 大模型与工具御三家（GPT/Codex、Gemini、Claude）",
         ""
@@ -1276,13 +1284,13 @@ def generate_fallback_digest(
         lines.append("")
 
     lines.extend([
-        "### ⚡ 算力与具身智能双巨头（英伟达 NVIDIA & 特斯拉 Tesla）",
+        "### ⚡ 科技四巨头（英伟达 / 特斯拉 / 华为 / 苹果）",
         ""
     ])
-    nv_tsla_items = [it for it in ai_news if any(k in it['title'].lower() for k in ['nvidia', '英伟达', 'huang', '黄仁勋', 'blackwell', 'cuda', 'tesla', '特斯拉', 'fsd', 'optimus', 'musk', '马斯克'])]
+    nv_tsla_items = [it for it in ai_news if any(k in it['title'].lower() for k in ['nvidia', '英伟达', 'huang', '黄仁勋', 'blackwell', 'cuda', 'tesla', '特斯拉', 'fsd', 'optimus', 'musk', '马斯克', 'huawei', '华为', '鸿蒙', 'harmonyos', '昇腾', 'apple', '苹果', 'iphone', '库克'])]
     if not nv_tsla_items:
         nv_tsla_items = ai_news[3:6] if len(ai_news) > 3 else ai_news
-    for i, item in enumerate(nv_tsla_items[:3], 1):
+    for i, item in enumerate(nv_tsla_items[:4], 1):
         lines.append(f"- **{item['title']}**")
         if item.get("summary"):
             lines.append(f"  - 深度剖析：{item['summary']}")
@@ -1295,7 +1303,7 @@ def generate_fallback_digest(
         "### 📈 今日飙升热榜（新锐精选）",
         ""
     ])
-    for i, repo in enumerate(github_projects[:4], 1):
+    for i, repo in enumerate(github_projects[:3], 1):
         stars_info = f"🌟 今日 {repo['stars_today']} / 总 Star {repo['total_stars']}"
         lines.append(f"### {i}. [{repo['name']}]({repo['url']}) {stars_info} | {repo['language']}")
         lines.append(f"- **💡 这项目到底是干啥的？**：{repo['description']}")
