@@ -13,8 +13,8 @@
    - **⚡ 科技四巨头**：
      - **英伟达 NVIDIA**：AI 芯片、CUDA 生态、黄仁勋动向
      - **特斯拉 Tesla**：FSD、Optimus 机器人、Robotaxi
-     - **华为 Huawei**：鸿蒙、昇腾 AI 芯片、终端新品、智能汽车
-     - **苹果 Apple**：iPhone / Mac 新品、自研芯片、Apple Intelligence
+     - **华为 Huawei**：新品与发布会、麒麟芯片、手机 / 电脑 / 平板 / 耳机 / 手表、鸿蒙系统
+     - **苹果 Apple**：新品与发布会、A/M 系列芯片、iPhone / Mac / iPad / AirPods / Watch、iOS / macOS 与 Apple Intelligence
    - 某家当天没有实质新闻时宁缺毋滥，不凑数。
 3. **🔥 板块三：GitHub 开源项目寻宝**
    - **📈 今日飙升热榜**：每天精选 **3 个** GitHub Trending 项目。
