@@ -516,12 +516,18 @@ def collect_ai_news(
         # 特斯拉 (Tesla) 自动驾驶与具身智能
         ('("Tesla" OR "FSD" OR "Optimus" OR "Robotaxi" OR "Elon Musk") when:2d', "Tesla / 特斯拉智能 (Global)", "en-US", "US:en"),
         ('("特斯拉" OR "FSD" OR "Optimus" OR "马斯克") when:2d', "特斯拉 / FSD / 具身智能 (中文热点)", "zh-CN", "CN:zh-Hans"),
-        # 华为 (Huawei) 鸿蒙、昇腾与终端
-        ('("Huawei" OR "HarmonyOS" OR "Ascend") when:2d', "Huawei / 华为 (Global)", "en-US", "US:en"),
-        ('("华为" OR "鸿蒙" OR "昇腾" OR "余承东") when:2d', "华为 / 鸿蒙 / 昇腾 (中文热点)", "zh-CN", "CN:zh-Hans"),
-        # 苹果 (Apple) 设备、芯片与 Apple Intelligence
-        ('("Apple Inc" OR "iPhone" OR "Apple Intelligence" OR "Tim Cook" OR "macOS") when:2d', "Apple / 苹果 (Global)", "en-US", "US:en"),
-        ('("苹果公司" OR "iPhone" OR "库克" OR "Apple Intelligence") when:2d', "苹果 / iPhone (中文热点)", "zh-CN", "CN:zh-Hans"),
+        # 华为 (Huawei) 消费电子：新品发布会、麒麟芯片、手机/电脑/平板/耳机/手表、鸿蒙系统
+        ('(华为 发布会 OR 华为 新品 OR 华为 官宣) when:3d', "华为 / 发布会与新品", "zh-CN", "CN:zh-Hans"),
+        ('(华为Mate OR 华为Pura OR 华为nova OR 华为Pocket OR 麒麟芯片 OR 麒麟9) when:3d', "华为 / 手机与麒麟芯片", "zh-CN", "CN:zh-Hans"),
+        ('(MateBook OR MatePad OR FreeBuds OR 华为WATCH OR 华为手表 OR 华为平板) when:3d', "华为 / 电脑平板耳机手表", "zh-CN", "CN:zh-Hans"),
+        ('(鸿蒙 OR HarmonyOS OR 鸿蒙电脑 OR 鸿蒙6) when:3d', "华为 / 鸿蒙系统", "zh-CN", "CN:zh-Hans"),
+        ('("Huawei Mate" OR "Huawei Pura" OR "Kirin chip" OR "Kirin 9" OR "HarmonyOS" OR "MatePad" OR "MateBook") when:3d', "Huawei / Devices (Global)", "en-US", "US:en"),
+        # 苹果 (Apple) 消费电子：新品发布会、A/M 系列芯片、iPhone/Mac/iPad/AirPods/Watch、iOS/macOS 系统
+        ('(苹果 发布会 OR 苹果 新品 OR 苹果 官宣) when:3d', "苹果 / 发布会与新品", "zh-CN", "CN:zh-Hans"),
+        ('(iPhone OR 苹果A19 OR 苹果A20 OR 苹果芯片) when:3d', "苹果 / iPhone 与芯片", "zh-CN", "CN:zh-Hans"),
+        ('(MacBook OR iPad OR AirPods OR "Apple Watch" OR M5芯片 OR M6芯片) when:3d', "苹果 / 电脑平板耳机手表", "zh-CN", "CN:zh-Hans"),
+        ('(iOS OR macOS OR iPadOS OR "Apple Intelligence") 苹果 when:3d', "苹果 / 系统与 Apple Intelligence", "zh-CN", "CN:zh-Hans"),
+        ('("iPhone" OR "MacBook" OR "iPad" OR "AirPods" OR "Apple Watch" OR "Apple event" OR "iOS 27") when:3d', "Apple / Devices (Global)", "en-US", "US:en"),
     ]
 
     for q, label, hl, ceid in targeted_queries:
@@ -867,8 +873,9 @@ def build_digest_prompt(
   2. **⚡ 科技四巨头（英伟达 NVIDIA / 特斯拉 Tesla / 华为 Huawei / 苹果 Apple）**：
      - **英伟达 (NVIDIA)**：老黄最新动向、AI 算力芯片（Blackwell/Rubin）、CUDA 生态、网络互联架构与市场催化剂。
      - **特斯拉 (Tesla)**：FSD 自动驾驶落地、Optimus 仿生机器人、Robotaxi 车队、工程突破与战略动作。
-     - **华为 (Huawei)**：鸿蒙 HarmonyOS 生态、昇腾 AI 芯片与算力、Mate/Pura 等终端新品、问界等智能汽车业务与重大战略动作。
-     - **苹果 (Apple)**：iPhone/Mac 等新品、自研芯片、Apple Intelligence 与 Siri 的 AI 进展、iOS 系统更新与重大战略动作。
+     - **华为 (Huawei)**：只关注消费电子产品线——新品与发布会（时间、发布了什么）、麒麟芯片、手机（Mate/Pura/nova/Pocket）、电脑（MateBook）、平板（MatePad）、耳机（FreeBuds）、手表、鸿蒙系统更新。写清具体型号、关键配置/新功能、价格与上市时间（数据底座中有才写，没有不编造）。车、云、企业业务、财报、人事等非产品新闻不写。
+     - **苹果 (Apple)**：同样只关注消费电子产品线——新品与发布会、A/M 系列芯片、iPhone、Mac、iPad、AirPods、Apple Watch、iOS/macOS/iPadOS 系统与 Apple Intelligence 功能更新。写法要求同华为。
+     - 华为、苹果的产品新闻可以各写 1~3 条（有就多写，没有就如实写“今日无新品动态”）；可靠的爆料/传闻也可以写，但必须标注“【爆料】”。
      - 每条均附带可点击的真实来源链接，如 `[🔗 查看原文](链接)`。
 
 #### 🔥 板块三：GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）
@@ -1287,7 +1294,7 @@ def generate_fallback_digest(
         "### ⚡ 科技四巨头（英伟达 / 特斯拉 / 华为 / 苹果）",
         ""
     ])
-    nv_tsla_items = [it for it in ai_news if any(k in it['title'].lower() for k in ['nvidia', '英伟达', 'huang', '黄仁勋', 'blackwell', 'cuda', 'tesla', '特斯拉', 'fsd', 'optimus', 'musk', '马斯克', 'huawei', '华为', '鸿蒙', 'harmonyos', '昇腾', 'apple', '苹果', 'iphone', '库克'])]
+    nv_tsla_items = [it for it in ai_news if any(k in it['title'].lower() for k in ['nvidia', '英伟达', 'huang', '黄仁勋', 'blackwell', 'cuda', 'tesla', '特斯拉', 'fsd', 'optimus', 'musk', '马斯克', 'huawei', '华为', '鸿蒙', 'harmonyos', '麒麟', 'kirin', 'mate', 'pura', 'freebuds', 'apple', '苹果', 'iphone', 'ipad', 'macbook', 'airpods', 'ios'])]
     if not nv_tsla_items:
         nv_tsla_items = ai_news[3:6] if len(ai_news) > 3 else ai_news
     for i, item in enumerate(nv_tsla_items[:4], 1):
