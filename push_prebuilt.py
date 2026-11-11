@@ -113,6 +113,7 @@ def main():
         targets.append((BASE_DIR / "main.py", "main.py"))
         targets.append((BASE_DIR / ".github" / "workflows" / "daily_digest.yml", ".github/workflows/daily_digest.yml"))
         targets.append((BASE_DIR / "push_prebuilt.py", "push_prebuilt.py"))
+        targets.append((BASE_DIR / "README.md", "README.md"))
     for fp, rel in targets:
         url = f"https://api.github.com/repos/{REPO}/contents/{rel}"
         body = {"message": f"update {rel}", "content": base64.b64encode(fp.read_bytes()).decode(), "branch": "main"}
