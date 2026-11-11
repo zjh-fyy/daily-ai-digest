@@ -65,13 +65,50 @@ def api(url, token, data=None, method=None):
         raise
 
 
+def pull_remote(token):
+    """从仓库拉回 prebuilt/ 下的早报与 history_seen.json（云端生成的早报只存在于仓库），以仓库为准"""
+    local_dir = BASE_DIR / "prebuilt"
+    local_dir.mkdir(exist_ok=True)
+    listing = api(f"https://api.github.com/repos/{REPO}/contents/prebuilt", token) or []
+    for item in listing:
+        name = item.get("name", "")
+        if not (name.endswith(".md") or name == "history_seen.json"):
+            continue
+        meta = api(item["url"], token)
+        if not meta or "content" not in meta:
+            continue
+        remote_bytes = base64.b64decode(meta["content"])
+        local_fp = local_dir / name
+        if name == "history_seen.json" and local_fp.exists():
+            try:
+                local_data = json.loads(local_fp.read_text(encoding="utf-8"))
+                remote_data = json.loads(remote_bytes.decode("utf-8"))
+                merged = local_data.get("entries", {})
+                merged.update(remote_data.get("entries", {}))
+                local_fp.write_text(json.dumps({"entries": merged}, ensure_ascii=False, indent=2), encoding="utf-8")
+                print(f"已合并 prebuilt/{name}")
+            except Exception as e:
+                print(f"合并 history_seen.json 失败: {e}")
+            continue
+        if local_fp.exists() and local_fp.read_bytes() == remote_bytes:
+            continue
+        local_fp.write_bytes(remote_bytes)
+        print(f"已拉取 prebuilt/{name}")
+
+
 def main():
     token = load_github_token()
+    if "--pull" in sys.argv:
+        pull_remote(token)
+        return
     files = sorted((BASE_DIR / "prebuilt").glob("*.md"))
     if not files:
         print("没有可上传的预生成早报")
         sys.exit(1)
     targets = [(fp, f"prebuilt/{fp.name}") for fp in files[-3:]]
+    history_fp = BASE_DIR / "prebuilt" / "history_seen.json"
+    if history_fp.exists():
+        targets.append((history_fp, "prebuilt/history_seen.json"))
     if "--code" in sys.argv:
         targets.append((BASE_DIR / "main.py", "main.py"))
         targets.append((BASE_DIR / ".github" / "workflows" / "daily_digest.yml", ".github/workflows/daily_digest.yml"))
