@@ -52,6 +52,7 @@ load_dotenv()
 BEIJING_TZ = timezone(timedelta(hours=8))
 PREBUILT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prebuilt")
 HISTORY_FILE = os.path.join(PREBUILT_DIR, "history_seen.json")
+HISTORY_KEEP_DAYS = 30
 
 
 def init_network_proxy():
@@ -207,8 +208,8 @@ def scan_recent_history(days: int = 5, exclude_date: Optional[str] = None) -> Di
 
     entries = history_data.get("entries", {})
     now_dt = report_now()
-    cutoff_dt = now_dt - timedelta(days=7)
-    cutoff_str = cutoff_dt.strftime("%Y-%m-%d")
+    cutoff_str = (now_dt - timedelta(days=HISTORY_KEEP_DAYS)).strftime("%Y-%m-%d")
+    news_cutoff_str = (now_dt - timedelta(days=7)).strftime("%Y-%m-%d")
 
     pruned_entries = {}
     for d_str, d_info in entries.items():
@@ -216,19 +217,21 @@ def scan_recent_history(days: int = 5, exclude_date: Optional[str] = None) -> Di
             pruned_entries[d_str] = d_info
             if exclude_date and d_str == exclude_date:
                 continue
-            seen_urls.update(d_info.get("urls", []))
+            # GitHub 项目按 30 天去重；新闻链接与标题只看 7 天，避免模糊匹配误杀新进展
             for r in d_info.get("repos", []):
                 seen_repos.add(r.lower())
-            seen_titles.extend(d_info.get("titles", []))
+            if d_str >= news_cutoff_str:
+                seen_urls.update(d_info.get("urls", []))
+                seen_titles.extend(d_info.get("titles", []))
 
     # 构建注入到 Prompt 中的黑名单精简摘要
     blacklist_lines = []
     for day_info in daily_summaries[:4]:
         d = day_info["date"]
         titles_str = "；".join(day_info["titles"][:5])
-        repos_str = ", ".join(day_info["repos"][:8]) if day_info["repos"] else "无"
         blacklist_lines.append(f"- 【{d} 已发要闻】: {titles_str}")
-        blacklist_lines.append(f"  已发开源仓库: {repos_str}")
+    if seen_repos:
+        blacklist_lines.append(f"- 【近 {HISTORY_KEEP_DAYS} 天已推荐开源仓库】: {', '.join(sorted(seen_repos))}")
 
     blacklist_summary = "\n".join(blacklist_lines) if blacklist_lines else "暂无近期历史黑名单"
 
@@ -272,7 +275,7 @@ def record_history_seen(date_str: str, content: str):
             "updated_at": datetime.now(BEIJING_TZ).isoformat()
         }
 
-        cutoff_str = (report_now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        cutoff_str = (report_now() - timedelta(days=HISTORY_KEEP_DAYS)).strftime("%Y-%m-%d")
         entries = {k: v for k, v in entries.items() if k >= cutoff_str}
         history_data["entries"] = entries
 
@@ -815,7 +818,7 @@ def build_digest_prompt(
     blacklist_section = ""
     if blacklist_summary and blacklist_summary.strip() != "暂无近期历史黑名单":
         blacklist_section = f"""
-### 🚫 近期已报道事件与开源项目黑名单（最近 3~5 天已发内容，严禁炒冷饭）：
+### 🚫 近期已报道事件与开源项目黑名单（严禁炒冷饭）：
 {blacklist_summary}
 
 【防重复铁律】：
@@ -861,20 +864,29 @@ def build_digest_prompt(
      - 每条均附带可点击的真实来源链接，如 `[🔗 查看原文](链接)`。
 
 #### 🔥 板块三：GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）
-- **【严禁推荐黑名单中的 GitHub 项目】**：确保今日推荐的所有开源项目与最近 5 天绝不重复！
+- **【严禁推荐黑名单中的 GitHub 项目】**：确保今日推荐的所有开源项目与最近 {HISTORY_KEEP_DAYS} 天绝不重复！
+- **【读者画像】**：读者是完全不懂编程的普通人。默认他不知道什么是终端、命令行、API、框架、SDK、MCP、Agent、仓库、部署等概念。
+  - 正文中如必须出现技术名词，第一次出现时紧跟括号用一句大白话解释（例：“MCP（可以理解成让 AI 能操作其他软件的通用插头）”）。
+  - 严禁用一个术语去解释另一个术语；严禁只翻译 GitHub 英文简介。
+  - 若某项目纯粹是给程序员用的开发工具，也要讲清“程序员拿它干嘛、对普通人间接意味着什么”，并在门槛里如实标注“普通人基本用不上”。
 - 必须严格分为以下两个子部分输出：
   1. **📈 今日飙升热榜（精选 4~5 个近期暴涨的新锐项目）**：
-     - 从 `raw_github_trending` 中挑选最惊艳的 4~5 个项目。
-     - 格式规范：
+     - 从 `raw_github_trending` 中挑选最惊艳的 4~5 个项目，优先挑普通人能直接用上或能看懂意义的项目。
+     - 格式规范（每个项目 250~350 字）：
        `### 序号. [项目名](链接) 🌟 今日 +新增Stars / 总Stars | 语言`
-       - **💡 这项目到底是干啥的？**：通俗直观的大白话打比方或生活场景解读（坚决杜绝生硬技术黑话堆砌，非技术读者也能秒懂）。
-       - **🎯 解决了什么痛点 / 好玩在哪？**：说明对普通人或开发者的实用价值、好玩点，或能平替什么收费工具。
+       - **📌 一句话说清**：不含任何术语，像跟爸妈解释一样说它是个什么东西。
+       - **💡 打个比方**：用一个生活中的类比讲清它的原理或作用。
+       - **🎬 具体能怎么用**：举 1~2 个真实使用场景，写出“谁、在什么情况下、用它做了什么、得到什么结果”。
+       - **🚪 上手门槛**：从以下档位中选一个并补一句说明——「下载安装即用」/「需要跟着教程敲几行命令」/「需要会编程，仅开发者适用」；如它能平替某个收费软件，在此写明。
   2. **💎 每日宝藏 / 殿堂级项目推荐（固定精选 2 个，类别不限）**：
-     - 从 `raw_github_classic_gems` 中精选 2 个最实用、最好玩或最经典的宝藏/神器项目进行深度推荐！
-     - 格式规范：
+     - 从 `raw_github_classic_gems` 中精选 2 个最实用、普通人最可能用上的宝藏项目进行深度推荐！
+     - 格式规范（每个项目 300~400 字）：
        `### 🌟 宝藏推荐 序号：[项目名](链接) 🏆 总Stars | 语言`
-       - **💡 这是个什么神器？**：用形象的大白话打比方，通俗生动地讲透它的本质功能，让外行也能眼前一亮。
-       - **🎯 为什么强烈推荐 / 你能拿它干啥？**：详细阐述它能平替什么收费商业软件、解决什么日常/工作中的烦人痛点，或带来怎样让人惊呼的超爽体验。
+       - **📌 一句话说清**：不含任何术语，说它是个什么东西。
+       - **💡 打个比方**：用生活类比讲透它的本质功能。
+       - **🎬 具体能怎么用**：举 2 个真实使用场景，越具体越好。
+       - **🆚 能替代什么**：它能平替哪些收费/常见软件，比它们好在哪、差在哪。
+       - **🚪 上手门槛**：同上三档之一，并说明去哪下载（如“项目页右侧 Releases 下载安装包”）。
 
 ---
 
@@ -882,7 +894,7 @@ def build_digest_prompt(
 1. 语言：通俗、生动、凝练的简体中文。
 2. 格式：清晰优雅的 Markdown 格式（使用 `#`, `##`, `###`, `**加粗**`, `- 列表`, `>` 引用块）。
 3. 避免在微信中渲染效果差的复杂 HTML 语法或多列宽表格，以引用卡片和列表为主，确保手机小屏沉浸阅读。
-4. 【完整性铁律】：必须完整输出全部三大板块（板块一：全球时事、板块二：AI 御三家 + 英伟达/特斯拉、板块三：GitHub 飙升热榜 + 每日宝藏推荐），切勿写得冗长导致后半部分被截断！每条要闻/项目控制在 150~200 字，精准提炼。
+4. 【完整性铁律】：必须完整输出全部三大板块（板块一：全球时事、板块二：AI 御三家 + 英伟达/特斯拉、板块三：GitHub 飙升热榜 + 每日宝藏推荐），切勿写得冗长导致后半部分被截断！板块一、二每条控制在 150~200 字精准提炼；板块三按上面规定的字数写足，宁可少选一个项目也要把每个项目讲透。
 5. 【纯净内容准则】：坚决禁止输出任何编者说明、数据底座局限性或未联网说明，导语之后直接切入板块一正文。
 """
     return prompt
