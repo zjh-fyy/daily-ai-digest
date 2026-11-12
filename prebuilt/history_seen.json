@@ -351,6 +351,55 @@
         "🌟 宝藏推荐 2：[mudler/LocalAI](https://github.com/mudler/LocalAI) 🏆 总 50,317 Stars | Go"
       ],
       "updated_at": "2026-11-11T22:32:56.142669+08:00"
+    },
+    "2026-11-13": {
+      "urls": [
+        "https://github.com/GoogleChrome/modern-web-guidance-src",
+        "https://github.com/addyosmani/agent-skills",
+        "https://github.com/keeweb/keeweb",
+        "https://github.com/openai/codex-security",
+        "https://github.com/opendatalab/MinerU",
+        "https://news.google.com/rss/articles/CBMiT0FVX3lxTE1JVEVLMHVaM01lbEZMUkVDZldVYXozMExpLW9xZXdjN1BLUHZPWHhGYU5jVEd2cEpSNEZOUUhQNXd0T0poeDQxYncxR2k5dVk?oc=5",
+        "https://news.google.com/rss/articles/CBMiUkFVX3lxTE5tZjVGVm9VQlJnc2VudEFLOTI3bFNLbmt5ZTBmamRLS1E2Y3hTbjIxX3RDUDkxdjhoTko2ck5VUGk4WldrMFRZWWhYUGRuTWtQNUE?oc=5",
+        "https://news.google.com/rss/articles/CBMiWEFVX3lxTE5NMzFmajFqZWQ3SUc3TXFuN2Q4UWhadFhXM1RmU01PMXEzcDF3NEZFYl9MMTdLUHBESndsZGd6TXE2YWpiUEVGMWZ4RU8xSXhOODFHSzZuR1g?oc=5",
+        "https://news.google.com/rss/articles/CBMiWEFVX3lxTFBkN3RFUWF2ZTFuaTZTVWxpTjdYLWhrVFNjVUpsUkhrcUdKR3NNMXhpclRTazRMeUt1VGNqbWNtSW1fRjZ1UTgybXdnWUlzTWwwSHU3cnZSVzI?oc=5",
+        "https://news.google.com/rss/articles/CBMiYkFVX3lxTE5qblZ5RFloejhPS3R2bGJGb3FiSXozeHppMzQ4WG15RUJ1NVhxdkQ2RTFEM2YxamtTTzZjY0pmSWxJX1ZQT0tGZllEb2NiMDBycEZ1Zy16MVEtRHY3MlUxWnZB?oc=5",
+        "https://news.google.com/rss/articles/CBMif0FVX3lxTFA0WGF3X3ZZQkU0OU1zaVV2WmgwZFVlU3NxdUVqeWVITVg1dzJZUG95SGJKMXgtdWRTemt0X2Z6M0k5RTJxSXVNWTlocUViamI0SFA1eGhhRnVzcnhPMWFncGFGdU5LVU95Yy1KQTdSNXZYQnFkdkNmVEd6TFIwMDg?oc=5",
+        "https://news.google.com/rss/articles/CBMifkFVX3lxTFBPVkdIVEowTzNNN3pfdU9jbFJEUmlOV0JXSkJSU1IwOVJzUm44OWlpVFVIanJWYmd3RFZ6NnN3emVEMkc4Y3lTemlPMzVlM2RTZERORTlvV2J4QTFRa3VOSVVrRGYzLW9MSkMzMW9nMm5tY2FlMzFFUE9BZFpFZw?oc=5",
+        "https://news.google.com/rss/articles/CBMigwFBVV95cUxNaTMtak5LN2ZUam9haGF5ekhPR1hvdFNyU2lybEN0YU0xdWtnNFBEZ2o4clJNT050OXZXWXJtRm9iOFZLVHI5SEc1aWdmb3NHM1Y4UE5MdUc5MlNPaGE2SEJ6cjhyeUlEaGFNeUxUeVRYTGQzeUZNdDB4YmZfNENOVDVsZw?oc=5",
+        "https://news.google.com/rss/articles/CBMiiAFBVV95cUxOQnlFaDJsODJsZ01YUEk4VFRmVmpEdDNCRFdJVG1sMmNPd3FCMnRESnFvRmo4clJnSkt1TVhHa2VqbU1uWjA0M0gzMXlTTGRTRE1hVmdzdU9WY2hKaDJBcWFNdXJocU9xWi0xZDZTSS12b0dNQXNicDFUQVNXUkZYc0VySFQtbjhr?oc=5",
+        "https://news.google.com/rss/articles/CBMikgFBVV95cUxNX3pBVmNFNV81WUtYNDZTXzExR0NfX3lEU3hHMklmNWExc2Z0VWo5dU5xSnB2Vk0zMGlobDNnc1owTXdIeERRNkh2NGJsdGk4VzhZYkp2a0E4eEJuamxuZkhBNTA3SlFMSF90bFNNZlZGQ1dmcmVHTWlBYjFodmhiUHNRdDlKQ0pnMkgwNHJqZGpsZw?oc=5",
+        "https://news.google.com/rss/articles/CBMikwFBVV95cUxON2VaZ01EcWdXc1ZGb3plNUNMM294WGZlT0tTbWw2SFNPOHZ3ZERtQlR6RkhLRWF2cHExRnNfWGZINm1NWVoxVjRSUDRTVXRFb1RaRGcyMXFUdEd0LWtlME5SVHJETVdzOHR6eHhyNXJLVXF6cldFbnhHMXcydFMzTGhzVnhWN2RQX2d0X1N4QVZvdUU?oc=5",
+        "https://news.google.com/rss/articles/CBMiqAFBVV95cUxQSVBKOUFhVENlOHhiWWtwTlhGOEdkTXJLaWRrV0I0a19lOGhsVWp6RFNkVHJVdWVYMUk5N3RkX1BueVUtcGV3dkRFeFdrZmdqR0tNWFViY01SZlhkcExlN3BTV1JWcDFTR3NXZDdURDBMY2tsN1U5bXRwOXRWY1BfZTFyTGlGMnhXT1N2SVRXX05UVV9oSmFSdlVBRnBaV1QzcFkwdnhzaS0?oc=5",
+        "https://www.bbc.co.uk/news/articles/c8zx964glvwxo?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/ckzd9p7e4eqeo?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/cr1ewpd95d21o?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/cw7vppyr80eeo?at_medium=RSS&at_campaign=rss"
+      ],
+      "repos": [
+        "addyosmani/agent-skills",
+        "googlechrome/modern-web-guidance-src",
+        "keeweb/keeweb",
+        "openai/codex-security",
+        "opendatalab/mineru"
+      ],
+      "titles": [
+        "乌克兰能源网络逼近崩溃边缘，严寒与断电双重夹击民生",
+        "民主党锁定密西西比州参议员席位，打破140余年历史纪录",
+        "加沙纳赛尔医院手术科室遇袭，医疗基建危机持续恶化",
+        "纽约布鲁克林三层建筑突发坍塌，已致2人死亡多人被困",
+        "外交部确认：中美就两国元首互动保持着密切沟通",
+        "🧠 1. AI 大模型与工具御三家",
+        "⚡ 2. 科技四巨头",
+        "📈 1. 今日飙升热榜",
+        "[addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) 🌟 今日 +787 / 总 116,223 | JavaScript",
+        "[GoogleChrome/modern-web-guidance-src](https://github.com/GoogleChrome/modern-web-guidance-src) 🌟 今日 +159 / 总 2,070 | TypeScript",
+        "[openai/codex-security](https://github.com/openai/codex-security) 🌟 今日 +52 / 总 11,976 | TypeScript",
+        "💎 2. 每日宝藏 / 殿堂级项目推荐",
+        "🌟 宝藏推荐 1：[opendatalab/MinerU](https://github.com/opendatalab/MinerU) 🏆 总 83,547 | Python",
+        "🌟 宝藏推荐 2：[keeweb/keeweb](https://github.com/keeweb/keeweb) 🏆 总 13,040 | HTML / JavaScript"
+      ],
+      "updated_at": "2026-11-12T16:58:08.084155+08:00"
     }
   }
 }
