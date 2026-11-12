@@ -308,9 +308,34 @@ def clean_html_text(raw_html: str, max_len: int = 500) -> str:
     return text
 
 
-def http_get(url: str, params: Optional[dict] = None) -> Optional[requests.Response]:
+_GITHUB_TOKEN_CACHE: Optional[str] = None
+
+
+def github_token() -> str:
+    """GitHub API Token：环境变量（云端 Actions 自带）-> 本地 .gh_token.json；无则匿名（每小时仅 60 次）"""
+    global _GITHUB_TOKEN_CACHE
+    if _GITHUB_TOKEN_CACHE is not None:
+        return _GITHUB_TOKEN_CACHE
+    token = (os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN") or "").strip()
+    if not token:
+        fp = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".gh_token.json")
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            token = (data.get("access_token") or data.get("token") or "").strip()
+        except Exception:
+            token = ""
+    _GITHUB_TOKEN_CACHE = token
+    return token
+
+
+def http_get(url: str, params: Optional[dict] = None, extra_headers: Optional[dict] = None) -> Optional[requests.Response]:
     """统一的网络请求封装，附带标准浏览器 User-Agent 和超时控制"""
     headers = {"User-Agent": USER_AGENT}
+    if url.startswith("https://api.github.com") and github_token():
+        headers["Authorization"] = f"Bearer {github_token()}"
+    if extra_headers:
+        headers.update(extra_headers)
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=HTTP_TIMEOUT)
         if resp.status_code == 200:
@@ -801,6 +826,189 @@ def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[
 collect_github_classic_gems = fetch_github_classic_gems
 
 
+# ==================== GitHub 项目实时资料补全 ====================
+README_CAVEAT_PATTERN = re.compile(
+    r"alpha|beta|experimental|early|preview|not yet|work in progress|\bWIP\b|unstable|breaking|"
+    r"deprecated|archived|unmaintained|no longer|fork|limitation|known issue|caveat|warning|"
+    r"requires?|requirement|prerequisite|GPU|VRAM|CUDA|\bRAM\b|memory|docker|self-host|"
+    r"windows|macos|linux|android|\bios\b|install|download|subscription|pricing|paid|free|license",
+    re.IGNORECASE,
+)
+
+
+def clean_readme_text(raw: str) -> Dict[str, Any]:
+    """把 README 原文清洗成：开头正文摘要 + 状态徽章 + 含限制/门槛关键词的句子"""
+    badges = []
+    for alt in re.findall(r'alt="([^"]+)"', raw) + re.findall(r"!\[([^\]]+)\]\(", raw):
+        if re.search(r"status|alpha|beta|stable|experimental|maintained|deprecated", alt, re.IGNORECASE):
+            badges.append(alt.strip())
+
+    text = re.sub(r"<!--.*?-->", " ", raw, flags=re.DOTALL)
+    text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    lines = []
+    for line in text.splitlines():
+        line = re.sub(r"\s+", " ", line).strip(" #>*-|`")
+        if len(line) >= 4:
+            lines.append(line)
+
+    intro = " ".join(lines)[:900]
+    caveats = []
+    for line in lines[8:]:
+        if len(line) > 25 and README_CAVEAT_PATTERN.search(line) and line not in caveats:
+            caveats.append(line[:220])
+        if len(caveats) >= 8:
+            break
+    return {"badges": badges[:4], "intro": intro, "caveat_lines": caveats}
+
+
+def detect_asset_platforms(asset_names: List[str]) -> List[str]:
+    rules = [
+        ("Windows", r"\.exe$|\.msi$|\.msix|win(dows)?[-_.]|win64|x86_64-pc-windows"),
+        ("macOS", r"\.dmg$|\.pkg$|mac(os)?|darwin|apple"),
+        ("Linux", r"\.appimage$|\.deb$|\.rpm$|\.flatpak|linux"),
+        ("Android", r"\.apk$|android"),
+        ("iOS", r"\.ipa$|[-_.]ios[-_.]"),
+    ]
+    found = []
+    for label, pat in rules:
+        if any(re.search(pat, n, re.IGNORECASE) for n in asset_names):
+            found.append(label)
+    return found
+
+
+def fetch_repo_live_info(full_name: str) -> Dict[str, Any]:
+    """实时拉取仓库最新状态：元数据 + 最新 Release + README（默认分支最新版），不使用任何缓存"""
+    info: Dict[str, Any] = {"fetched_at": datetime.now(BEIJING_TZ).strftime("%Y-%m-%d %H:%M")}
+    api = f"https://api.github.com/repos/{full_name}"
+
+    meta_resp = http_get(api)
+    if meta_resp:
+        m = meta_resp.json()
+        pushed = (m.get("pushed_at") or "")[:10]
+        created = (m.get("created_at") or "")[:10]
+        info.update({
+            "stars": m.get("stargazers_count"),
+            "created_at": created,
+            "last_code_push": pushed,
+            "archived": bool(m.get("archived")),
+            "is_fork": bool(m.get("fork")),
+            "license": (m.get("license") or {}).get("spdx_id") or "未声明",
+            "open_issues": m.get("open_issues_count"),
+            "homepage": m.get("homepage") or "",
+            "topics": (m.get("topics") or [])[:8],
+            "description": m.get("description") or "",
+        })
+        try:
+            now_d = datetime.now(BEIJING_TZ).date()
+            if created:
+                info["project_age_days"] = (now_d - datetime.strptime(created, "%Y-%m-%d").date()).days
+            if pushed:
+                info["days_since_last_push"] = (now_d - datetime.strptime(pushed, "%Y-%m-%d").date()).days
+        except ValueError:
+            pass
+
+    rel_resp = http_get(f"{api}/releases", params={"per_page": 10})
+    releases = [r for r in (rel_resp.json() if rel_resp else []) if not r.get("draft")]
+    if releases:
+        r0 = releases[0]
+        asset_names = [a.get("name", "") for a in r0.get("assets", [])]
+        info["latest_release"] = {
+            "tag": r0.get("tag_name"),
+            "published_at": (r0.get("published_at") or "")[:10],
+            "is_prerelease": bool(r0.get("prerelease")),
+            "installer_platforms": detect_asset_platforms(asset_names),
+            "asset_count": len(asset_names),
+            "release_notes_excerpt": clean_html_text(r0.get("body") or "", 400),
+        }
+        stable = next((r for r in releases if not r.get("prerelease")), None)
+        if stable and stable is not r0:
+            info["latest_stable_release"] = {
+                "tag": stable.get("tag_name"),
+                "published_at": (stable.get("published_at") or "")[:10],
+                "installer_platforms": detect_asset_platforms([a.get("name", "") for a in stable.get("assets", [])]),
+            }
+    else:
+        info["latest_release"] = "无正式发布版本（没有现成安装包，通常需要自己从源码部署）"
+
+    readme_resp = http_get(f"{api}/readme", extra_headers={"Accept": "application/vnd.github.raw"})
+    if readme_resp:
+        info["readme"] = clean_readme_text(readme_resp.text)
+    info["hard_facts"] = build_hard_facts(info)
+    return info
+
+
+def build_hard_facts(info: Dict[str, Any]) -> List[str]:
+    """由代码直接判定的硬性事实，模型必须原样体现，不得淡化"""
+    facts = []
+    if info.get("archived"):
+        facts.append("仓库已被作者归档（archived），彻底停止维护")
+    days = info.get("days_since_last_push")
+    if isinstance(days, int) and days > 180:
+        facts.append(f"已经 {days} 天没有更新代码，属于长期没人维护，必须如实写明")
+    age = info.get("project_age_days")
+    if isinstance(age, int) and age < 90:
+        facts.append(f"项目创建才 {age} 天，非常新，可能不稳定")
+    badges = " ".join((info.get("readme") or {}).get("badges", []))
+    intro = (info.get("readme") or {}).get("intro", "")
+    m = re.search(r"\b(early alpha|alpha|beta|experimental|preview)\b", badges + " " + intro[:400], re.IGNORECASE)
+    if m:
+        facts.append(f"README 自己标注为 {m.group(1)}（测试/早期版本）")
+    if re.search(r"(community )?fork of|no longer maintained|unmaintained|abandoned", intro, re.IGNORECASE):
+        facts.append("README 提到项目是别人接手的分支或原项目已停止维护")
+    rel = info.get("latest_release")
+    if isinstance(rel, str):
+        facts.append("没有发布任何安装包，只能自己从源码部署")
+    elif isinstance(rel, dict):
+        stable = info.get("latest_stable_release")
+        if rel.get("is_prerelease"):
+            facts.append(f"最新版本 {rel.get('tag')} 是预发布（测试）版")
+        platforms = set(rel.get("installer_platforms") or [])
+        if stable:
+            platforms |= set(stable.get("installer_platforms") or [])
+        if "Windows" not in platforms:
+            facts.append(
+                "最近的发布版本里没有 Windows 安装包，不能写“下载安装即用”"
+                + (f"（现有安装包平台：{'/'.join(sorted(platforms))}）" if platforms else "")
+            )
+    return facts
+
+
+def enrich_github_projects(projects: List[Dict[str, Any]], label: str) -> List[Dict[str, Any]]:
+    """并发为候选项目补全实时资料，写入 project['live_info']"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def worker(p: Dict[str, Any]):
+        name = p.get("name", "").strip().strip("/")
+        if name.count("/") != 1:
+            return
+        try:
+            p["live_info"] = fetch_repo_live_info(name)
+        except Exception as e:
+            print(f"  [警告] 补全 {name} 实时资料失败: {e}")
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        list(pool.map(worker, projects))
+    ok = sum(1 for p in projects if p.get("live_info", {}).get("readme"))
+    print(f"  => 【{label}】已实时补全 {ok}/{len(projects)} 个项目的 README / 最新版本 / 维护状态")
+    return projects
+
+
+def load_reader_profile() -> str:
+    """读者画像：云端从 Secret READER_PROFILE 读取（仓库公开，不提交文件），本地读 reader_profile.md"""
+    env_profile = (os.getenv("READER_PROFILE") or "").strip()
+    if env_profile:
+        return env_profile
+    fp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reader_profile.md")
+    try:
+        with open(fp, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
 # ==================== 大模型提炼核心模块 ====================
 def build_digest_prompt(
     global_news: List[Dict[str, str]],
@@ -822,10 +1030,16 @@ def build_digest_prompt(
         "report_date": f"{date_str} {weekday_str} (北京时间)",
         "raw_global_news": global_news[:14],
         "raw_ai_news": ai_news[:80],
-        "raw_github_trending": github_projects[:10],
-        "raw_github_classic_gems": github_classic_gems[:8]
+        "raw_github_trending": github_projects[:8],
+        "raw_github_classic_gems": github_classic_gems[:6]
     }
     context_json = json.dumps(context_data, ensure_ascii=False, indent=2)
+
+    reader_profile = load_reader_profile()
+    profile_section = f"""
+### 🙋 读者画像（板块三“对我有用吗”必须据此判断）
+{reader_profile}
+""" if reader_profile else ""
 
     blacklist_section = ""
     if blacklist_summary and blacklist_summary.strip() != "暂无近期历史黑名单":
@@ -846,6 +1060,7 @@ def build_digest_prompt(
 
 ### 📦 原始数据底座 (JSON)
 {context_json}
+{profile_section}
 {blacklist_section}
 ---
 
@@ -880,28 +1095,39 @@ def build_digest_prompt(
 
 #### 🔥 板块三：GitHub 开源项目寻宝（今日飙升 + 每日宝藏推荐）
 - **【严禁推荐黑名单中的 GitHub 项目】**：确保今日推荐的所有开源项目与最近 {HISTORY_KEEP_DAYS} 天绝不重复！
-- **【读者画像】**：读者是完全不懂编程的普通人。默认他不知道什么是终端、命令行、API、框架、SDK、MCP、Agent、仓库、部署等概念。
+- **【读者画像】**：读者不会编程（详见上方【读者画像】），默认他不知道什么是终端、命令行、API、框架、SDK、MCP、Agent、仓库、部署等概念。
   - 正文中如必须出现技术名词，第一次出现时紧跟括号用一句大白话解释（例：“MCP（可以理解成让 AI 能操作其他软件的通用插头）”）。
   - 严禁用一个术语去解释另一个术语；严禁只翻译 GitHub 英文简介。
   - 若某项目纯粹是给程序员用的开发工具，也要讲清“程序员拿它干嘛、对普通人间接意味着什么”，并在门槛里如实标注“普通人基本用不上”。
 - 必须严格分为以下两个子部分输出：
   1. **📈 今日飙升热榜（固定精选 3 个近期暴涨的新锐项目）**：
-     - 从 `raw_github_trending` 中挑选最惊艳的 3 个项目，优先挑普通人能直接用上或能看懂意义的项目。
-     - 格式规范（每个项目 250~350 字）：
+     - 从 `raw_github_trending` 中挑选 3 个项目，**优先挑与读者画像相关、读者真能用上的**；纯开发者工具最多选 1 个。
+     - 格式规范（每个项目 300~400 字）：
        `### 序号. [项目名](链接) 🌟 今日 +新增Stars / 总Stars | 语言`
        - **📌 一句话说清**：不含任何术语，像跟爸妈解释一样说它是个什么东西。
-       - **💡 打个比方**：用一个生活中的类比讲清它的原理或作用。
-       - **🎬 具体能怎么用**：举 1~2 个真实使用场景，写出“谁、在什么情况下、用它做了什么、得到什么结果”。
-       - **🚪 上手门槛**：从以下档位中选一个并补一句说明——「下载安装即用」/「需要跟着教程敲几行命令」/「需要会编程，仅开发者适用」；如它能平替某个收费软件，在此写明。
+       - **💡 打个比方**：用一个生活中的类比讲清它的作用。
+       - **🎬 能怎么用**：举 1~2 个使用场景，只能写 README 里明确支持的功能和用法。
+       - **🚪 上手门槛**：从以下档位中选一个并补一句说明——「下载安装即用」/「需要跟着教程敲几行命令」/「需要会编程，仅开发者适用」。依据 `latest_release.installer_platforms` 判断：有 Windows 安装包才算「下载安装即用」；需要 Docker、源码编译、命令行的，如实写明。
+       - **⚠️ 要注意**：1~2 条真实短板（成熟度、硬件要求、平台限制、是否收费、是否为别人接手维护的分支等），必须来自 `live_info`，不许写成“小瑕疵”来淡化。
+       - **🙋 对我有用吗**：结合【读者画像】给出结论，三选一并说理由——「✅ 值得一试」/「🤔 可以先收藏观望」/「❌ 跟你关系不大」。必须对照读者的具体硬件（如 RTX 4060 8GB 显存、16GB 内存、Windows 11、iPhone + 华为鸿蒙平板）和已在用的方案（如 Immich 相册、Emby 影视库、Obsidian 笔记）来判断：已有同类方案时，要说清比现有方案强在哪、换过去值不值得；跑不动或不支持读者设备时直接说。
   2. **💎 每日宝藏 / 殿堂级项目推荐（固定精选 2 个，类别不限）**：
-     - 从 `raw_github_classic_gems` 中精选 2 个最实用、普通人最可能用上的宝藏项目进行深度推荐！
-     - 格式规范（每个项目 300~400 字）：
+     - 从 `raw_github_classic_gems` 中精选 2 个，**优先挑与读者画像相关、读者真能用上的**。
+     - 格式规范（每个项目 350~450 字）：
        `### 🌟 宝藏推荐 序号：[项目名](链接) 🏆 总Stars | 语言`
        - **📌 一句话说清**：不含任何术语，说它是个什么东西。
        - **💡 打个比方**：用生活类比讲透它的本质功能。
-       - **🎬 具体能怎么用**：举 2 个真实使用场景，越具体越好。
-       - **🆚 能替代什么**：它能平替哪些收费/常见软件，比它们好在哪、差在哪。
-       - **🚪 上手门槛**：同上三档之一，并说明去哪下载（如“项目页右侧 Releases 下载安装包”）。
+       - **🎬 能怎么用**：举 2 个使用场景，只写 README 里明确支持的。
+       - **🆚 和谁比**：和同类常见软件（收费或免费）相比，客观写出好在哪、差在哪；不许写“完美平替”。
+       - **🚪 上手门槛**：同上三档之一，并说明去哪下载（有 Release 安装包才可写“项目页右侧 Releases 下载”）。
+       - **⚠️ 要注意**：同上。
+       - **🙋 对我有用吗**：同上。
+- **【诚实铁律｜比“写得精彩”更重要】**：
+  0. 每个项目 `live_info.hard_facts` 里的每一条都是程序核实过的硬性事实，**必须逐条体现在「⚠️ 要注意」或「🚪 上手门槛」里，不许改写成正面说法**（例如“188 天没更新”不许写成“成熟维护期”；“没有 Windows 安装包”就不许写“下载安装即用”）。
+  1. 每个项目的 `live_info` 是刚从 GitHub 实时拉取的最新资料（README 原文摘要、最新版本号与发布日期、各平台安装包、最后更新时间、项目创建时间、许可证）。所有功能、平台、门槛、版本信息只能以 `live_info` 为准；`description` 一句话简介只作参考。资料里没有的信息一律不写，不许脑补“拖进去就能批量处理”“老电脑也丝滑”这类具体体验。
+  2. README 或徽章出现 alpha / beta / early / experimental / preview / not yet 等字样，必须在「📌 一句话说清」里写明“目前还是测试版/早期版本”，并在「⚠️ 要注意」里引用 README 自己承认的差距。`latest_release.is_prerelease` 为真同理。
+  3. `archived` 为真、或 `days_since_last_push` 超过 180 天，必须写明“已停止更新/长期没人维护”；`project_age_days` 少于 90 天的新项目，要提醒“项目很新，可能不稳定”。
+  4. 禁用绝对化与营销用语：完美、丝滑、毫发无损、彻底、零门槛、碾压、吊打、神器、一键搞定、强力平替等。用克制、具体的描述代替。
+  5. 写的是“这个项目今天值得了解”，不是“读者都需要它”；结论里允许、也鼓励写「❌ 跟你关系不大」。
 
 ---
 
@@ -1598,7 +1824,8 @@ def main():
     # 经典宝藏排除 今日 trending + 近 5 天历史推荐的 repo
     exclude_classic_names = trending_names | seen_repos
     github_classic_gems = fetch_github_classic_gems(exclude_names=exclude_classic_names)
-
+    github_trending = enrich_github_projects(github_trending[:8], "今日飙升")
+    github_classic_gems = enrich_github_projects(github_classic_gems[:6], "每日宝藏")
     total_scraped = len(global_news) + len(ai_news) + len(github_trending) + len(github_classic_gems)
     print(f"\n📊 数据采集完成，总共获得 {total_scraped} 条全网最新热点与经典宝藏数据底座。")
 
