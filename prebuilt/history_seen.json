@@ -391,6 +391,55 @@
         "🌟 宝藏推荐 2：[keeweb/keeweb](https://github.com/keeweb/keeweb) 🏆 13,040 Stars | HTML / JavaScript"
       ],
       "updated_at": "2026-11-13T09:00:22.618808+08:00"
+    },
+    "2026-11-14": {
+      "urls": [
+        "https://apnews.com/article/157d168cb7ff9cae318cbf6cecb3988f",
+        "https://apnews.com/article/6aaa6bd4991ef22eb0c3baa6961a91d1",
+        "https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-Hydrogen/",
+        "https://finance.eastmoney.com/a/202611143931075095.html",
+        "https://finance.eastmoney.com/a/202611143931075095.html?utm_source=openai",
+        "https://github.com/GoogleChrome/modern-web-guidance-src",
+        "https://github.com/backnotprop/plannotator",
+        "https://github.com/debpalash/VoiceStudio",
+        "https://github.com/nexu-io/open-design",
+        "https://github.com/tailscale/tailcat",
+        "https://gr.china-embassy.gov.cn/chn/fyrth/202611/t20261113_12058837.htm",
+        "https://insideevs.com/news/815473/tesla-cybercab-pricing-sales-announced/",
+        "https://nvidianews.nvidia.com/news/nvidia-announces-ceo-transition/",
+        "https://openai.com/index/introducing-chatgpt-wallet/",
+        "https://www.anthropic.com/research/building-strong-safety-evaluations",
+        "https://www.ithome.com/1/026/962.htm",
+        "https://www.ithome.com/1/026/962.htm?utm_source=openai",
+        "https://www.macrumors.com/2026/11/13/iphone-18-and-18e-coming-in-spring-2027/",
+        "https://www.the-independent.com/news/uk/home-news/microsoft-nhs-government-uk-government-gmt-b3084763.html",
+        "https://www.the-independent.com/news/uk/home-news/microsoft-nhs-government-uk-government-gmt-b3084763.html?utm_source=openai"
+      ],
+      "repos": [
+        "backnotprop/plannotator",
+        "debpalash/voicestudio",
+        "googlechrome/modern-web-guidance-src",
+        "nexu-io/open-design",
+        "tailscale/tailcat"
+      ],
+      "titles": [
+        "微软全球宕机近24小时：办公软件故障，为什么能影响公共服务？",
+        "美国全国航班暂停起飞：通信故障触及航空系统安全底线",
+        "深圳APEC进入倒计时：贸易之外，数字经济与AI成为重要议题",
+        "【最新进展】欧洲确定乌克兰谈判代表组合，俄方仍未放松条件",
+        "🧠 AI 大模型与工具御三家（GPT/Codex、Gemini/Antigravity、Claude）",
+        "OpenAI：ChatGPT Wallet上线，AI开始跨过“帮你选”到“替你买”的门槛",
+        "Google：Gemini 4 Hydrogen主攻快执行，Antigravity走向多模型分工",
+        "Anthropic：把安全评估本身拿出来审查，而不只是公布一个高分",
+        "⚡ 科技四巨头（英伟达 NVIDIA / 特斯拉 Tesla / 华为 Huawei / 苹果 Apple）",
+        "英伟达 NVIDIA：黄仁勋离任后的焦点，转向接班与经营连续性",
+        "特斯拉 Tesla：Cybercab向部分个人用户开放购买，低车价之外还有月费",
+        "华为 Huawei：HarmonyOS 7小艺AI快捷栏再延期，别把计划当成已经上线",
+        "苹果 Apple：【爆料】iPhone 18与18e再传2027年春季登场，预计搭载A20",
+        "📈 今日飙升热榜",
+        "[backnotprop/plannotator](https://github.com/backnotprop/plannotator) 🌟 今日 +108 / 总 10,451 | TypeScript"
+      ],
+      "updated_at": "2026-11-14T08:56:12.848501+08:00"
     }
   }
 }
