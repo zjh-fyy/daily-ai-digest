@@ -3,7 +3,7 @@
 """
 每日 AI & 全球资讯早报 (Daily AI & Global Digest)
 --------------------------------------------------
-自动化多源数据抓取 -> 大模型智能提炼 (Gemini 3.8 Flash / GPT-6.1-sol High) -> 多渠道推送
+自动化多源数据抓取 -> 大模型智能提炼 (Gemini 4 Hydrogen / GPT-6.1-sol High) -> 多渠道推送
 
 核心功能板块：
 1. 🌍 全球时事（前因后果、多方视角、背景脉络与权威来源）
@@ -1017,7 +1017,7 @@ def build_digest_prompt(
     github_classic_gems: Optional[List[Dict[str, Any]]] = None,
     blacklist_summary: str = ""
 ) -> str:
-    """构建供大模型 (本地 Gemini 3.8 Flash / aizex gpt-6.1-terra) 提炼的统一标准 Prompt"""
+    """构建供大模型 (本地 Gemini 4 Hydrogen / aizex gpt-6.1-terra) 提炼的统一标准 Prompt"""
     now_bj = report_now()
     date_str = now_bj.strftime("%Y年%m月%d日")
     weekday_map = {0: "星期一", 1: "星期二", 2: "星期三", 3: "星期四", 4: "星期五", 5: "星期六", 6: "星期日"}
@@ -1149,9 +1149,9 @@ def generate_digest_with_local(
     api_key: str,
     blacklist_summary: str = ""
 ) -> str:
-    """调用本机 Antigravity 网关 (OpenAI 兼容, Gemini 3.8 Flash)，仅在本机开机时可用"""
+    """调用本机 Antigravity 网关 (OpenAI 兼容, Gemini 4 Hydrogen)，仅在本机开机时可用"""
     base_url = (os.getenv("LOCAL_LLM_BASE_URL") or "http://127.0.0.1:8317/v1").strip().rstrip("/")
-    model = (os.getenv("LOCAL_LLM_MODEL") or "gemini-3.8-flash-high").strip()
+    model = (os.getenv("LOCAL_LLM_MODEL") or "gemini-4-hydrogen-xhigh").strip()
     prompt = build_digest_prompt(global_news, ai_news, github_projects, github_classic_gems, blacklist_summary=blacklist_summary)
     payload = {
         "model": model,
@@ -1361,7 +1361,7 @@ def extract_engine_label(text: str) -> tuple:
     if "【大模型接口提示】" in text or "本地多源数据底座为您完整生成" in text:
         return text, "本地多源数据底座"
     if "Gemini" in text[:300]:
-        return text, "Gemini 3.8 Flash"
+        return text, "Gemini 4 Hydrogen"
     return text, "GPT-6.1-sol (High)"
 
 
@@ -1384,7 +1384,7 @@ def generate_digest(
 ) -> str:
     """
     纯粹二级高可用自愈容灾调度架构：
-    1. 第一级（本地优先）：本地网关 (Gemini 3.8 Flash，仅本机且配置 LOCAL_LLM_API_KEY 时生效；云端 Actions 或未配 Key 静默跳过)
+    1. 第一级（本地优先）：本地网关 (Gemini 4 Hydrogen，仅本机且配置 LOCAL_LLM_API_KEY 时生效；云端 Actions 或未配 Key 静默跳过)
     2. 第二级（云端/备援）：GPT-6.1-sol (High) (gpt-6.1-sol + high 深度思考，多节点轮换 + 3 次重试自愈 + CODEX/AIZEX 双 Key 互备)
     3. 终极自愈兜底：本地多源数据底座应急早报生成
     """
@@ -1399,10 +1399,10 @@ def generate_digest(
         # 云端 Actions 环境或未配置本地 Key，直接静默跳过，绝不追加任何错误信息
         if is_github_actions or not local_key:
             return None
-        print("\n🧠 调度大模型引擎: 本地网关 (Gemini 3.8 Flash)...")
+        print("\n🧠 调度大模型引擎: 本地网关 (Gemini 4 Hydrogen)...")
         try:
             content = generate_digest_with_local(global_news, ai_news, github_projects, github_classic_gems, local_key, blacklist_summary=blacklist_summary)
-            return content, "Gemini 3.8 Flash"
+            return content, "Gemini 4 Hydrogen"
         except Exception as e:
             err = f"本地网关失败: {e}"
             errors.append(err)
@@ -1437,11 +1437,8 @@ def generate_digest(
                     print("  🔄 尝试切换下一个有效 API Key 凭据...")
         return None
 
-    # 调度序列：本地环境优先尝试本地网关，云端 Actions 优先尝试云端 GPT-6.1-sol (High)
-    if not is_github_actions and local_key:
-        order = [try_local, try_gpt_sol]
-    else:
-        order = [try_gpt_sol]
+    # 调度序列：本地网关已停用，直连云端主力 GPT-6.1-sol (High)
+    order = [try_gpt_sol]
 
     for engine_fn in order:
         res = engine_fn()
