@@ -1,6 +1,6 @@
 # 🌅 每日 AI & 全球资讯早报 (Daily AI & Global Digest)
 
-> 基于 **本机夜间预生成（Gemini 3.8 Flash）+ GitHub Actions 云端兜底（GPT-6.1-sol）+ QQ 邮箱推送** 的每日自动化早报系统。每天早上把全球要闻、AI 御三家与科技四巨头动态、GitHub 热门项目推送到你的邮箱 / 微信「QQ邮箱提醒」。
+> 基于 **本机夜间预生成（Gemini 4 Hydrogen）+ GitHub Actions 云端兜底（GPT-6.1-sol）+ QQ 邮箱推送** 的每日自动化早报系统。每天早上把全球要闻、AI 御三家与科技四巨头动态、GitHub 热门项目推送到你的邮箱 / 微信「QQ邮箱提醒」。
 
 ---
 
@@ -31,7 +31,7 @@
 ```mermaid
 flowchart TD
     A["🌙 本机计划任务 每晚 22:30"] --> A1["拉取仓库中的历史早报与去重记录"]
-    A1 --> A2["采集资讯 + Gemini 3.8 Flash 生成【明天】的早报"]
+    A1 --> A2["采集资讯 + Gemini 4 Hydrogen 生成【明天】的早报"]
     A2 --> A3["上传 prebuilt/明天日期.md 到 GitHub 仓库"]
 
     B["⏰ GitHub Actions 定时任务 (UTC 20:07 触发，排队后约早上 8~10 点运行)"] --> C{"仓库里有今天的预生成早报？"}
@@ -44,7 +44,7 @@ flowchart TD
     D --> H["💾 早报与去重记录提交回仓库 prebuilt/"]
 ```
 
-**为什么分两段？** 本机的 Gemini 3.8 Flash 走本地 Antigravity 网关（`127.0.0.1:8317`），只有电脑开着才能用；所以每晚提前写好第二天的稿子放到仓库，早上由云端负责发送。电脑没开机时，云端会自己用 GPT-6.1-sol 写。
+**为什么分两段？** 本机的 Gemini 4 Hydrogen 走本地 Antigravity 网关（`127.0.0.1:8317`），只有电脑开着才能用；所以每晚提前写好第二天的稿子放到仓库，早上由云端负责发送。电脑没开机时，云端会自己用 GPT-6.1-sol 写。
 
 ---
 
@@ -52,7 +52,7 @@ flowchart TD
 
 | 顺序 | 引擎 | 运行位置 | 所需配置 |
 | :--- | :--- | :--- | :--- |
-| 1 | **Gemini 3.8 Flash**（本地 Antigravity 网关） | 仅本机（夜间预生成） | `LOCAL_LLM_API_KEY`，可选 `LOCAL_LLM_BASE_URL`、`LOCAL_LLM_MODEL` |
+| 1 | **Gemini 4 Hydrogen**（本地 Antigravity 网关） | 仅本机（夜间预生成） | `LOCAL_LLM_API_KEY`，可选 `LOCAL_LLM_BASE_URL`、`LOCAL_LLM_MODEL` |
 | 2 | **GPT-6.1-sol (High)**（`/v1/responses` 协议） | 本机备用 / 云端主力 | `CODEX_API_KEY` 或 `AIZEX_API_KEY`（两个 Key 可互为备份） |
 | 3 | **本地数据底座应急稿** | 任意 | 无需配置，所有模型都失败时自动启用 |
 
