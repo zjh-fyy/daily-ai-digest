@@ -2,20 +2,10 @@ name: Daily AI & Global Digest
 
 on:
   schedule:
-    # GitHub Actions 定时调度 (UTC 20:07 = 北京时间 04:07)
-    # 提前至凌晨触发，应对 GitHub Actions 约 4.5~5 小时的排队延迟，确保在早上 08:30~09:15 稳妥准时送达！
-    - cron: '7 20 * * *'
+    # GitHub Actions 定时调度 (UTC 18:17 = 北京时间 02:17)
+    # GitHub 定时任务会排队延迟，11 月实测 3h43m~6h46m，按此推算约 06:00~09:00 送达
+    - cron: '17 18 * * *'
   workflow_dispatch: # 支持在 GitHub 仓库 Actions 页面手动点击 "Run workflow" 随时测试
-    inputs:
-      primary_engine:
-        description: '选择本次运行的主力引擎 (Primary Engine)'
-        required: false
-        default: 'codex'
-        type: choice
-        options:
-          - codex
-          - aizex
-          - local
 
 permissions:
   contents: write
@@ -42,7 +32,6 @@ jobs:
 
       - name: Run Daily Digest Script
         env:
-          PRIMARY_ENGINE: ${{ inputs.primary_engine || secrets.PRIMARY_ENGINE || 'codex' }}
           CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
           CODEX_BASE_URL: ${{ secrets.CODEX_BASE_URL }}
           CODEX_MODEL: ${{ secrets.CODEX_MODEL || 'gpt-6.1-sol' }}
@@ -60,8 +49,6 @@ jobs:
           SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           READER_PROFILE: ${{ secrets.READER_PROFILE }}
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
         run: |
           python main.py
 

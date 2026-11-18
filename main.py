@@ -336,16 +336,28 @@ def http_get(url: str, params: Optional[dict] = None, extra_headers: Optional[di
         headers["Authorization"] = f"Bearer {github_token()}"
     if extra_headers:
         headers.update(extra_headers)
-    try:
-        resp = requests.get(url, headers=headers, params=params, timeout=HTTP_TIMEOUT)
-        if resp.status_code == 200:
-            return resp
-        else:
+    # 429（限流）与 5xx 属于临时故障：退避后重试，最多 3 次；其余状态码直接放弃
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=HTTP_TIMEOUT)
+            if resp.status_code == 200:
+                return resp
+            retryable = resp.status_code == 429 or resp.status_code >= 500
+            if retryable and attempt < max_attempts:
+                retry_after = resp.headers.get("Retry-After", "")
+                wait = int(retry_after) if retry_after.isdigit() else 2 ** attempt
+                time.sleep(min(wait, 15))
+                continue
             print(f"  [警告] 请求失败 ({resp.status_code}): {url}")
             return None
-    except Exception as e:
-        print(f"  [异常] 网络请求错误: {url} -> {e}")
-        return None
+        except Exception as e:
+            if attempt < max_attempts:
+                time.sleep(2 ** attempt)
+                continue
+            print(f"  [异常] 网络请求错误: {url} -> {e}")
+            return None
+    return None
 
 
 def fetch_rss_feed(url: str, source_name: str, max_items: int = 6) -> List[Dict[str, str]]:
@@ -561,6 +573,8 @@ def collect_ai_news(
         feed_items = fetch_rss_feed(search_rss_url, label, max_items=4)
         for it in feed_items:
             add_filtered_item(it)
+        # 连续请求间隔 1.5 秒，降低云端 IP 触发 Google News 429 的概率
+        time.sleep(1.5)
 
     # 3. Hacker News 高分 AI/科技深度讨论帖（基于稳定 Algolia HN API）
     hn_items = fetch_hacker_news_algolia(max_items=6)
@@ -1476,12 +1490,7 @@ def generate_fallback_digest(
         ""
     ]
 
-    if "403" in reason or "denied" in reason.lower():
-        lines.extend([
-            "> ⚠️ **【Gemini 权限提示】**：当前 Google Gemini API Key 返回 `403 PERMISSION_DENIED (Your project has been denied access)`。这是由于 Google 自动化安全系统对新账号或新项目的拦截。解决方案：在 [Google AI Studio](https://aistudio.google.com/) 重新点击「Create API key」选择新建一个 Project 生成新 Key 替换即可恢复大模型云端增强。今日早报已由本地多源数据底座为您完整生成送达！",
-            ""
-        ])
-    elif reason:
+    if reason:
         lines.extend([
             f"> ⚠️ **【大模型接口提示】**：云端大模型接口返回异常 (`{reason[:180]}`)。今日早报已由本地多源数据底座为您完整生成送达！",
             ""
@@ -1779,6 +1788,10 @@ def dispatch_notifications(content: str) -> bool:
     email_enabled = bool(os.getenv("EMAIL_SENDER") and os.getenv("EMAIL_PASSWORD"))
     if not email_enabled:
         print("\n⚠️ [提示] 未配置 EMAIL_SENDER 或 EMAIL_PASSWORD，跳过邮件推送。")
+        if (os.getenv("GITHUB_ACTIONS") or "").strip().lower() == "true":
+            # 云端唯一的投递渠道就是邮件，缺 Secret 等于没发，必须报失败
+            print("   -> 云端运行缺少邮箱 Secret，视为推送失败。")
+            return False
         print("   -> 您可直接打开 preview_digest.md 查看生成的早报。")
         return True
 
@@ -1799,7 +1812,9 @@ def main():
         prebuilt = load_prebuilt_digest(now_bj.strftime("%Y-%m-%d"))
         if prebuilt:
             print(f"\n📦 发现今日预生成早报 ({len(prebuilt)} 字符)，直接推送，跳过大模型。")
-            dispatch_notifications(prebuilt)
+            if not dispatch_notifications(prebuilt):
+                print("\n❌ 早报推送失败，以非零状态退出，避免任务被误判为成功。")
+                sys.exit(1)
             print("\n🎉 今日早报全流程顺利执行完毕！")
             return
 
@@ -1857,7 +1872,10 @@ def main():
         return
 
     # 3. 多渠道推送分发与本地落地
-    dispatch_notifications(digest_content)
+    if not dispatch_notifications(digest_content):
+        # 不归档：否则重跑时会读到这份稿子，误以为当天已发送
+        print("\n❌ 早报推送失败，跳过归档并以非零状态退出。")
+        sys.exit(1)
     try:
         os.makedirs(PREBUILT_DIR, exist_ok=True)
         today_path = os.path.join(PREBUILT_DIR, f"{target_date_str}.md")
