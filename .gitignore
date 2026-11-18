@@ -21,3 +21,6 @@ preview_digest.md
 .gh_token.json
 .gh_*.json
 github_deploy.py
+
+# 个人画像（云端改用 Secret READER_PROFILE）
+reader_profile.md
