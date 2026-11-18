@@ -592,6 +592,55 @@
         "苹果①：国行iPad、Mac测试版加入Apple智能，注意版本边界"
       ],
       "updated_at": "2026-11-17T10:56:52.108729+08:00"
+    },
+    "2026-11-18": {
+      "urls": [
+        "https://github.com/CISOfy/lynis",
+        "https://github.com/affaan-m/ECC",
+        "https://github.com/getarcaneapp/arcane",
+        "https://github.com/obra/superpowers",
+        "https://github.com/zardus/ctf-tools",
+        "https://news.google.com/rss/articles/CBMi0AFBVV95cUxOM0p5RXctRUhTQzMxTEdQYnJxaVozUkFlQmJOSEJrQjVfeEdrdDJBcExkcmhEUGpoZTN0dXo3dVhxajVwWlpWdVAyRzNDUTBEdi1rekFrT0l3VlgxMFVic1c1ZG9fTVpaVEh0UzAtOUdGRmtVSDdHdHpHRzRiWGY3QUVndjItemljNG8wZVJrNWo3azFrWTVHQmtWczhTcDdGblJmbjhiOFEyS0pULWNQSG9MVkNLVzhJTjBFaUtGaE16UFA0d1c2YzMtX3Z4Tkdm?oc=5",
+        "https://news.google.com/rss/articles/CBMiTkFVX3lxTFBpUXNxRGhwRTd2WlJQcFJsTmItRzd6VnZsNGVlb210d2JKandScGVpaHd3alhQd2EyZDFmVTdjcjVMc3U0cjZQZzJEdS1EZw?oc=5",
+        "https://news.google.com/rss/articles/CBMiYkFVX3lxTE9jbGpyb01OTmFvLXR0TGpqcEQ1bkYzcTBRRkczYkpmazhlaTY3WTZ1WVotQVEyRFdpbXVWV01mRm9JQ1g5aUVQek5LRHV3SjZPVWtUdlhjM3o4UFk0ZklOQzdB?oc=5",
+        "https://news.google.com/rss/articles/CBMic0FVX3lxTE1Kc2VnajBqd2NXLVhqT0M2UHQzSWk5VTZ1Wkc0YThPUVVFN1pmZ1NOX0RLLWoycks3T2ZYX1NnZ0ZHYjdkN0ZPbXRISERvLVg3bXNoSnhxdjB0VFRCT2xMUUpwZGxxZEU3b0xJZ1RLcGtsRjQ?oc=5",
+        "https://news.google.com/rss/articles/CBMicEFVX3lxTE01dDBZQUpzcHZreTMtTDUxTGhmTkhWVFBMdkNFMFByWTh4aWZ5MXpxMlFqc0JQZVVVdTRURUljaUtZZ0tPYTRUUnFIa0d6ak8tR3FlRndPVGo4TEJOZ0t0Y01LVlJkS3VxUDZpUU1LLTg?oc=5",
+        "https://news.google.com/rss/articles/CBMijAFBVV95cUxPN0NKQ3hBS3MxVlR3d1RibmNJV0JWOHZfUzlUZUhBdUk5aHZ5cEZPNnVVVGNZcUM3b3I5c2s3MmhmLXdwbklkeUpNelpOSG8yMncwLUwwVXNOUHRnNlI4WXZ1bkRaa0ZkTFZZSlRWaFRmTGpadUxobDg3MlFSeVh6aHNLa19WWjlxTkF5ZQ?oc=5",
+        "https://news.google.com/rss/articles/CBMimgFBVV95cUxQbjl2b0tzT1ROT2plV1p5RHhQd3hXOEJKRFhOZ1ItZExOQV9oVGkzTU9tcEEyTXhjNHRKQVExRTNRdEtlY24zUFhmS0h0c21FUVVrVVh0NGF2SXFmdm1wcmVRLUlCcG5CMGRIZklSdVBkVElkS3lwRF9LaGg4YzU5b0dsZXlveWxSNzhGYzJlZmRSRkhvUWZRTHB3?oc=5",
+        "https://news.google.com/rss/articles/CBMiowFBVV95cUxNbms1SXczRV9hTXpBeUV0VjROUlF4VG9NQ3o1OUpMS1lVT0pFOWgzV1hPMnAxMGRUVGRjUTJ4T0JfZFkyWXJ2anZNQnBCT0pibVkydkJnal91d1BmbExzdHF1MjdUYWRDRlBydU0wVmRHbEw4WE9JcGVRM3JHMl9lWVNFMzhTY2h3MHZPMTFDNVBQRG9xMFNNTnFQZzR1cDVMNTR3?oc=5",
+        "https://news.google.com/rss/articles/CBMiqwFBVV95cUxOdzVoTDBKTEpPYWdHVlhXOFdqd3Z2bUNtb3Vkbnp5NHlSMW1HOUR0d0VnWmtBVDdHQjdiUklzcE5kTWV2RllEcFRQVHZCWkp5b1hEVHc1bDFDZWtHQks4OGlWeE5oa0NxV0xpcnJha29OTldUTmVYNldkaHdSb1JFY19vSTFQYjlndDJidTQ2MTk0Nmd5Wkxyd0lVRWI4TW5wNXJRVkp0Sk1sWWs?oc=5",
+        "https://news.google.com/rss/articles/CBMirAFBVV95cUxPa01kNklOVVFtVHM5aTFrWTB2TXJPX19IckFoYkdxQnNEd3ZoaHVlVmJtNUxGWFZiV09NcHFXNjlYV0doX1F5eWdzMjU1dDRtb21BRlh4TDhXejRoSzlKSHFvZHBNODlkT001UkZvaVAyMHN0NG9VNXlLMV81TXM1dXJtYndUcE9ReGRuR2h3bS1Zenl4d182RjViSWx6Q0RrTUl3V05OQXpDWU5I?oc=5",
+        "https://openai.com/index/introducing-gpt-6-2-astra-sol",
+        "https://www.bbc.co.uk/news/articles/cm2kl50vkwkdo?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/cw8085rykkmgo?at_medium=RSS&at_campaign=rss",
+        "https://www.cnn.com/2026/11/17/politics/highly-classified-national-security-communications-network-goes-down",
+        "https://www.nytimes.com/2026/11/17/upshot/school-phone-bans-study-scores.html"
+      ],
+      "repos": [
+        "affaan-m/ecc",
+        "cisofy/lynis",
+        "getarcaneapp/arcane",
+        "obra/superpowers",
+        "zardus/ctf-tools"
+      ],
+      "titles": [
+        "美国高密级通信网络故障：数字基础设施也是国家安全底盘",
+        "以军被曝将350万张照片上传亚马逊云，商业技术卷入监控争议",
+        "俄罗斯军机坠毁，机上19人全部遇难",
+        "校园禁手机出现成绩改善信号，但“禁用”不是教育万能药",
+        "🧠 AI 大模型与工具御三家（GPT/Codex、Gemini/Antigravity、Claude）",
+        "OpenAI：GPT-6.2 Astra、Sol发布，官方进步与用户体验出现分歧",
+        "Google：机器人模型提速，Gemini继续从“回答”走向“办事”",
+        "Anthropic：IPO后的股权结构成为焦点，云巨头与模型公司绑定更深",
+        "⚡ 科技四巨头（英伟达 NVIDIA / 特斯拉 Tesla / 华为 Huawei / 苹果 Apple）",
+        "英伟达：财报强劲，但黄仁勋回归被拒，监管消息另添变量",
+        "特斯拉：Cybercab的商业模式，开始接受“长期账单”审视",
+        "华为：Mate X8外观继续揭晓，折叠屏不能只看“大与薄”",
+        "苹果：27.3测试版继续推进，国行iPad、Mac出现AI体验入口",
+        "📈 今日飙升热榜",
+        "[getarcaneapp/arcane](https://github.com/getarcaneapp/arcane) 🌟 今日 +618 / 总 9,366 | Go"
+      ],
+      "updated_at": "2026-11-18T10:25:41.492372+08:00"
     }
   }
 }
