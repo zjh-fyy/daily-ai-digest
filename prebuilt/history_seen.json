@@ -641,6 +641,54 @@
         "[getarcaneapp/arcane](https://github.com/getarcaneapp/arcane) 🌟 今日 +618 / 总 9,366 | Go"
       ],
       "updated_at": "2026-11-18T10:25:41.492372+08:00"
+    },
+    "2026-11-19": {
+      "urls": [
+        "https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-neon/",
+        "https://github.com/HKUDS/CLI-Anything",
+        "https://github.com/astral-sh/uv",
+        "https://github.com/bojieli/ai-agent-book",
+        "https://github.com/google-research/paper-orchestra",
+        "https://github.com/hiroi-sora/Umi-OCR",
+        "https://news.google.com/rss/articles/CBMiSEFVX3lxTE8wSGR2TVU4VlFaQUpkUF93R1pfLVJFeWNxUEhueUk3VmtQb1ptQVRzU3lieUVoZnd5WFpGS0o5c0I0eEw5NFVxcw?oc=5",
+        "https://news.google.com/rss/articles/CBMiTEFVX3lxTE1jMUcwNlc0WHV3M1dmQndjTVB2MnZOUUxRcUFvNUxqb19UY2NfU3pITGpTMmV4VDNrV2dEMjJhZ19CSDV3ZUZlanVuUE8?oc=5",
+        "https://news.google.com/rss/articles/CBMiYEFVX3lxTFBTdVJhYmtvOGoxY3hOa2l0T3ZoalZVQ2gyM2gyUkJFQTg5ZHFLSU5tQkdSVkZlSzZSRjdObUtnSzhqUXhRdzF5ZjhrSkhTWW5iREpTd2FUQVBjOXlLN2phSQ?oc=5",
+        "https://news.google.com/rss/articles/CBMif0FVX3lxTFBmSzJNQU1rYmtKZTBxOGVGcklhRVNtMFBZbVBNYjZBNi1DcXp2dDlLcFNXWXozUzFTTkhEYlZGSmtNSDU4Z2FMLWhDMEpCakFlbzc0NWJDVjRWVWpyZmpFTk50Um1aZUdYdUhJTkx6LWZ4T3NMUHdTTUlPam5Fbjg?oc=5",
+        "https://news.google.com/rss/articles/CBMiiAFBVV95cUxPdlpzOHRCSVQzSjZNY2MtcFd1bTJkTGdkeUdhTThGb3JwVG5SdVM4aExOdlpVci1iZFZzcVkyanhicDg0dXNiZm8xdmhsUDB3S1JadHU5dzBMNGFNTWFZUVR4Z2lUTXVUcjgtR1d0VFVLek1KeG1pb2xYZUdpU2hqRW53TnFWeWNq?oc=5",
+        "https://news.google.com/rss/articles/CBMinwFBVV95cUxNSEdXU1cwclpNNWdVcElLeGpLck96dXJrbUk2YkRCMXR5ZGRDT0w0OFI3cFJaZ2wzdTd6SlBMUEY2R3hLcFhXTW9TOGJrMXdlMUdZZThlNE5tb3FxR3p2c05EQ2RjT0lETkZPZEZ4TjMyazJNaDlTZTBjQzZlVGlRRFJlUWwyZ2xOTWd6X291TDZwUWd2cG1UblJVUjBpVk0?oc=5",
+        "https://news.google.com/rss/articles/CBMiqAFBVV95cUxOMThvUmpYTW5TY3k5M3dGODhWa0RtOS1XY1ZHMVBBMEl0eU5UTVBLbWNZLVRTeFhBWnQzMjRMSF8zNV9oMWRUbzRhN0tieHJkblRyc0lZdnJQYmJ1aThMUGptc3VqbU1Fc0VqUldRUUptODA5VU5uZHhoS0FRS240MlB3MVpLRTE4d3cwODBMdndrS19GYkJEbExXSHZ6SVdOcjhuMkR5ek0?oc=5",
+        "https://openai.com/index/inside-the-codex-sandbox",
+        "https://openai.com/index/research-acceleration-jagged-frontier",
+        "https://www.bbc.co.uk/news/articles/c32l507ev4v4o?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/c5m2l90ez144o?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/c6742m39xgzxo?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/cw8r7510degno?at_medium=RSS&at_campaign=rss"
+      ],
+      "repos": [
+        "astral-sh/uv",
+        "bojieli/ai-agent-book",
+        "google-research/paper-orchestra",
+        "hiroi-sora/umi-ocr",
+        "hkuds/cli-anything"
+      ],
+      "titles": [
+        "【最新进展】深圳APEC进入密集外交阶段，见面之后更要看成果",
+        "中韩自贸协定第二阶段谈判实质性完成：下一步看规则落地",
+        "俄乌战场转入地下：无人机正在改变“哪里还能走”",
+        "以军越过加沙“黄线”实施地面行动，停火解释权再起争执",
+        "缅甸面临罗兴亚人问题重大裁决，国家责任是焦点",
+        "🧠 AI 大模型与工具御三家（GPT/Codex、Gemini/Antigravity、Claude）",
+        "OpenAI：AI加速研究，但“会做题”与“能独立科研”仍有距离",
+        "Google：Gemini 4 Neon发布，争夺“够强、够快”的日常入口",
+        "Anthropic：被报道瞄准逾1.4万亿美元上市估值，考验转向商业兑现",
+        "⚡ 科技四巨头（英伟达 NVIDIA / 特斯拉 Tesla / 华为 Huawei / 苹果 Apple）",
+        "英伟达：领导层交接进入执行阶段，合作伙伴强调业务延续",
+        "特斯拉：Cybercab向特定客户开放销售，不等于全面无人驾驶放行",
+        "华为：Mate X8上手视频聚焦折痕，实际体验仍要看多种条件",
+        "华为：WATCH 5重启HarmonyOS 7测试版升级",
+        "苹果：iOS 27.3继续调整“液态玻璃”，重点是视觉舒适度"
+      ],
+      "updated_at": "2026-11-19T08:34:01.783349+08:00"
     }
   }
 }
