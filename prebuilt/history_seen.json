@@ -738,6 +738,54 @@
         "苹果应用生态：Andarium上架，iPhone运行安卓应用出现新路径"
       ],
       "updated_at": "2026-11-20T08:45:19.879117+08:00"
+    },
+    "2026-11-21": {
+      "urls": [
+        "https://github.com/AgriciDaniel/claude-obsidian",
+        "https://github.com/XiaoYouChR/Ghost-Downloader-3",
+        "https://github.com/laurent22/joplin",
+        "https://github.com/openvinotoolkit/openvino",
+        "https://github.com/toeverything/AFFiNE",
+        "https://news.google.com/rss/articles/CBMiSEFVX3lxTE5JZndRdU1HWElqeGtuSk1ySDFBS2dtcGFaS1BucEFxLUhCZ3l0Xzhtd1NJUGlkcWNZRmN2bXRfZzhTdFBMS05PZg?oc=5",
+        "https://news.google.com/rss/articles/CBMiVkFVX3lxTE1hOVhvVDkxVENSOXktelVuMFk5UUQ1S05XdDhnaTNPZ1R2X2tiTVZ6NGZiUkw1U080dlJTdjU4b2hBTnJ2a3NudHpzNTEwYU1rU2VXTEtn?oc=5",
+        "https://news.google.com/rss/articles/CBMiXEFVX3lxTE1tMTlMSEw5VVVkR1hqM1BSa09TZFNkeGxvQVFGUk0tN3I1V2w3SjNRRk1iMXIwTlBLd29yeGFZdjR0WEw0bERuVlZ2ekhXZ3JoSVhzTGJoNmdJZjl2?oc=5",
+        "https://news.google.com/rss/articles/CBMiYkFVX3lxTE1sN1BHUWdHa2QzWU81dm9YQUoyR1FZYXFtejJlTC1LQ1FOMFZHbVJYdjl3djlhbmdSeFNVX2Joc21ZLUM2aEdJZmZWZFc0SGdUbTFBQVBMWk1maUs4cklLVGtB?oc=5",
+        "https://news.google.com/rss/articles/CBMidEFVX3lxTE5rSnBnR3JraDZDTEZpRUVKcG5uRmk0NFk4b2l6UTJid0VBY0E4NDk5M3h0U2hkbXNtcTVvdVdIeTNBQ29GV2pnSTVYRzRIUXNYTnNjaGRfNG9ETlVTN1NnU1NLdVBkNGZTaEQ4SDBqUjZJcGRr?oc=5",
+        "https://news.google.com/rss/articles/CBMingFBVV95cUxPWlRVWE01Qm4tMzF5bnZxeFJXajNPR05fMTNxd184akFELTB1aF84OEZWUjRsUkRRMG4zYVlhRmI2T0lKZHV2MWVGbDdqNkdnWWNSenJkWWhtMkFzczFhMGEyLW0xM1B1Yy1lMGg5NUNLMkJ1TjhGZlBQeVZoUjRYZjVfcmtPNjlrQzVLNTYwRzFOSzY3WnJ6Z0NDd2Vvdw?oc=5",
+        "https://news.google.com/rss/articles/CBMirgFBVV95cUxQYUs2dGZKcXM0TldoNEJPdjNSbzVQMVB0UkpkTzhreFpwc2VuRjUteDZ2TzNtTGhNZDZkSEd4RTdFMzVsWkxpTWRDOTRzWVNpSlVXOVNkVlVYZU93ZzQ1aGVVUklHdUpLbWxuME1rWEU3WEFkUkgxa3E2TXkwdllpLVNPMjVKYVREV0NRVlFaRjJWQU1KMUxrX2hGRlZiZnJhQ3pLMlpTMk5XMDB5RWc?oc=5",
+        "https://news.google.com/rss/articles/CBMitgFBVV95cUxPMzlPdFVTT2cyVkhmMFVKNWZ1MnpNT0NLcURnblg4THMwUWNuYTRBLWUxU0ZSSUR5bk1zNnBmVlhIUjByNkN6TzVBNC1uaXQxM0dwY2FkMzZQdm00a0xyMXo3NFNpSUNPdERZWU82aGZLa0lNZHpMOXVnVDBVQW9lMmNrWEVRczVYS1Racm1NNlNERDBJeTFJRG1pZVRfTC1LTy1pNjhpVzRaeGRrY25kSzQ1aDNUUQ?oc=5",
+        "https://openai.com/index/combatting-adversarial-distillation",
+        "https://openai.com/index/introducing-medchembench",
+        "https://www.bbc.co.uk/news/articles/c6808ym10vzgo?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/c6jreyqgw4e9o?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/c6pqr2g7w059o?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/cqx2x9dklxnro?at_medium=RSS&at_campaign=rss"
+      ],
+      "repos": [
+        "agricidaniel/claude-obsidian",
+        "laurent22/joplin",
+        "openvinotoolkit/openvino",
+        "toeverything/affine",
+        "xiaoyouchr/ghost-downloader-3"
+      ],
+      "titles": [
+        "美股进入回调区间：AI的技术前景，不能替企业估值兜底",
+        "英欧达成新协议：脱欧之后，重新降低做生意的摩擦",
+        "波兰称俄导弹落入境内：没有伤亡，仍是危险的升级信号",
+        "中国与印尼启动全面经济伙伴关系协定谈判：重点在“升级规则”",
+        "🧠 AI 大模型与工具御三家（GPT/Codex、Gemini/Antigravity、Claude）",
+        "OpenAI：一边防能力被“搬走”，一边把科研评测做细",
+        "Google：Gemini强调速度，Duplex继续把AI推向实际办事",
+        "Anthropic：数学家宣称借助AI证明黎曼猜想，关键是接下来的核验",
+        "⚡ 科技四巨头（英伟达 NVIDIA / 特斯拉 Tesla / 华为 Huawei / 苹果 Apple）",
+        "英伟达 NVIDIA：会计调查报道叠加股价下挫，先分清调查与定论",
+        "特斯拉 Tesla：意大利为自动驾驶系统亮绿灯，不等于全欧洲放行",
+        "华为 Huawei：OSTA星芒亮相，鸿蒙AI体验成为新品牌卖点",
+        "华为 Huawei：WATCH Air定档11月24日，轻薄之外还要看续航",
+        "苹果 Apple：【爆料】筹建AI智能体团队，目标是让电脑替你操作",
+        "📈 今日飙升热榜"
+      ],
+      "updated_at": "2026-11-21T08:05:02.768582+08:00"
     }
   }
 }
