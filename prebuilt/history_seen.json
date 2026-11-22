@@ -836,6 +836,55 @@
         "苹果：【爆料】Apple Intelligence拟升级为能操作设备的智能体"
       ],
       "updated_at": "2026-11-22T07:30:10.614987+08:00"
+    },
+    "2026-11-23": {
+      "urls": [
+        "https://github.com/EcoPasteHub/EcoPaste",
+        "https://github.com/Tracer-Cloud/opensre",
+        "https://github.com/cursor/plugins",
+        "https://github.com/hluk/CopyQ",
+        "https://github.com/nginx/nginx",
+        "https://news.google.com/rss/articles/CBMiSEFVX3lxTE13ZVdrRUcyZzlxU2VmV0RlZjVMTndYdDQzd2ktUVI5Mm93b3hDd0lIRV9tT2hvSHpuQUM4SGpYSmp5LWtoQlRyaQ?oc=5",
+        "https://news.google.com/rss/articles/CBMiT0FVX3lxTE5wajc4d1NuUDlqUDFwUXJvMEtCUWpoZXMzQ2Zndi1sTlNMY09Vd2g3MnBqd1AwZG10T1NydVpROU13RE12S3pRY2laV1NsRWc?oc=5",
+        "https://news.google.com/rss/articles/CBMiU0FVX3lxTE93TFQ5X2ZwMm5XS3I3eUlIMzBidUpZNlZUVE9IWWVaTUZQcEN5MTFwYnFkZUJMcnpoOW5ydFRMR2l3bFVRLURmcmhDY3pibnd6SzBv?oc=5",
+        "https://news.google.com/rss/articles/CBMiWEFVX3lxTFBqY2NJSV9UN1BNN0daT2hvQ2dSTmE1QnFTTFRuRDlNV01QU2xnNVg0bGRMMzZzQ0sxZzdwSURtMDRWNFhaNFhLdmFfbGk3N2F3OGFBRnV1OEk?oc=5",
+        "https://news.google.com/rss/articles/CBMiaEFVX3lxTE03cUk5aGZNOTdpM0tNUTQ2NGpwY2V1VUd6TkRZWm1wbWdrdTlmc0FpN1dsVzJ4R2VnOF84U0d4QU42d19jOC02c2d6dGd0bGVqYVJGcmd0VDdvOExueXY0NHNTODBaMldK?oc=5",
+        "https://news.google.com/rss/articles/CBMiiwFBVV95cUxQWFh3S1dtRTNyRldqVkNJUXNEd05nUTJ5cmJiMEtla2M1M3pkV1dVT2w2SU9RUl96OHBOVF90U0Nlb0xTVS1leHl2ZTYyRFRXVnRWd3RJVEwtbUl4NzV5V0N4S3h5amdQOUcyRmd2VE05RDMzOUVzMFVEeGQ3Ny02ZEstLUZwdmQxZXQ0?oc=5",
+        "https://news.google.com/rss/articles/CBMijgFBVV95cUxOaHFMUVMwVmxfYkFVdUd0YlhPbFJ4aHk5YTdlUmFzSHRSc1VPRk5yNjJQY0RVMGV5LW0taTV4VVQzdzhBcmZIVDJ1YVk1a08ydXIyUU5qUFFuV2M1VHRHTmJUN25DOUlnbWlaaG1XcVo3a1NzTjRET05vWVlZRTdpMUlzd0pKbDVSNm8zYUFn?oc=5",
+        "https://news.google.com/rss/articles/CBMingFBVV95cUxNZTVLVGtJMVRtaklNSHA5bVI5eW5jUkFTRUJhTXkwQ2xDTWdyVkNRR0p2c3VJdnRXSkRxaVRCSTVGMDZWeVI0cVJfR2NqbTBzcmNTckp4d0ptNndyYTd6ZlJWTzBqYzFjX1NpemtjdXBMeWRwZmo4WkJaX2N5S0QyMmVweWdyTnFVejdNcXdaSmNJVy1sTDd3d0k5UkJuUQ?oc=5",
+        "https://news.google.com/rss/articles/CBMipAFBVV95cUxQTGxIY24yOU1LOUlMeVhETGlMMUZaVjN6SHZzSkduYTluS1RkZzVxUktHR2dFRndlZEUxdjBmQXlpdzRkMjhIVDRaTXlsTUUzbzFud0Y3R1ZaUzhxS3dlYUVaNlgzSDB6cVNNMTNzNGRSNHYwaGp0MkdTNmptYzZxRG1GeVRmVzdaRjNkWkU1b21UTWROUGJrUWJ5UksyeGtPZG1PSQ?oc=5",
+        "https://news.google.com/rss/articles/CBMipAFBVV95cUxQcm1fbVJENmFGZU81bGR4WXVfeDMwdWdaY0xNbmVBN3hmaXVVeVBLelJxT3dubnROYnVkM2NCRXRfcFFvMGNtZ0FlM3c5LWt1WUVGclQzY1ZJTVBCR2d2dXozSXRqN0VIM1NsV0d2YVJLRjJpRnlIcVRNSlZqeURwLWhKa1V4dUNvWDdlZmNoMnQxQ1d6WlVGalNpdjVSZm9PMXRzUA?oc=5",
+        "https://news.google.com/rss/articles/CBMisAFBVV95cUxNT1RsTFBlMWZGejNqWjVvdVlYX2lRTGpZZXhoYXFXN2RuV3lHZ09ra0ctdnZqc3hiVENXSlc2ZTBIbDRyTmpTS1Nhdk1kdU5HLW5FNGdNRTNoeXVBeEc5cDl5VGx3c3dUSzNDYkVVTHVfenVQbHFUQ0hQS2NfalhuNDczWFdUS0FWQS1iZ1ZhVnNYMy1FOHVSUmlBMmI3NTdVTGY1X0JxTFRmYnptV3huQQ?oc=5",
+        "https://openai.com/index/perplexity-and-intelligence",
+        "https://www.bbc.co.uk/news/articles/cqwy06zrd26lo?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/cr894gjz0j0yo?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/cw3dgk29d37no?at_medium=RSS&at_campaign=rss"
+      ],
+      "repos": [
+        "cursor/plugins",
+        "ecopastehub/ecopaste",
+        "hluk/copyq",
+        "nginx/nginx",
+        "tracer-cloud/opensre"
+      ],
+      "titles": [
+        "【最新进展】COP31谈判破裂：从“谈不拢”走向“未能达成重大协议”",
+        "韩国教育部长辞职：防AI作弊，也不能把考试秩序弄乱",
+        "俄罗斯船只在利比亚港口爆炸：补给节点也可能成为风险点",
+        "美国北卡重计票落定：民主党再添众议院席位",
+        "以色列被曝考虑单独对伊动武：谈判信号之外，军事选项仍在",
+        "🧠 AI 大模型与工具御三家（GPT/Codex、Gemini/Antigravity、Claude）",
+        "OpenAI：一边衡量能力，一边讨论行业刹车",
+        "Google / Gemini：比“记住你”更重要的，是让你管得住记忆",
+        "Anthropic / Claude：上市成为焦点，技术热度仍要接受商业检验",
+        "⚡ 科技四巨头（英伟达 NVIDIA / 特斯拉 Tesla / 华为 Huawei / 苹果 Apple）",
+        "英伟达：对华芯片销售遭追问，重点是合规责任",
+        "特斯拉：FSD V15更新，实景叠加不等于安全结论",
+        "华为①：鸿蒙电脑年内支持侧载，重点是软件获取方式",
+        "华为②：WATCH GT 6更新，微信通话向手腕延伸",
+        "苹果①：iPhone Duo渠道价回落，别把降幅看成售价"
+      ],
+      "updated_at": "2026-11-23T07:42:26.802342+08:00"
     }
   }
 }
