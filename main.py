@@ -658,14 +658,9 @@ def _parse_trending_page(html_text: str, period_label: str, normalized_seen: Set
         lang_elem = row.select_one("span[itemprop='programmingLanguage']")
         language = lang_elem.text.strip() if lang_elem else "Unknown"
 
-        stars_elem = row.select_one("span.d-inline-block.float-sm-right")
-        raw_delta = stars_elem.text.strip() if stars_elem else ""
-        if not raw_delta:
-            m_delta = re.search(r"(\d[\d,]*)\s+stars?\s+(today|this week)", row.text, re.IGNORECASE)
-            raw_delta = m_delta.group(0) if m_delta else ""
-
-        num_m = re.search(r"(\d[\d,]*)", raw_delta)
-        delta_num = int(num_m.group(1).replace(",", "")) if num_m else 0
+        row_plain = row.get_text(" ", strip=True)
+        m_delta = re.search(r"(\d[\d,]*)\s+stars?\s+(?:today|this week|this month)", row_plain, re.IGNORECASE)
+        delta_num = int(m_delta.group(1).replace(",", "")) if m_delta else 0
         stars_today_disp = f"{period_label} +{delta_num:,}" if delta_num > 0 else period_label
 
         total_stars_elem = row.select_one("a[href$='/stargazers']")
@@ -700,7 +695,7 @@ def collect_github_trending(seen_repos: Optional[Set[str]] = None) -> List[Dict[
     normalized_seen = {r.lower() for r in (seen_repos or set())}
     existing_names: Set[str] = set()
 
-    for since, label in [("daily", "今日"), ("weekly", "本周")]:
+    for since, label in [("daily", "今日"), ("weekly", "本周"), ("monthly", "本月")]:
         resp = http_get(f"https://github.com/trending?since={since}")
         if resp:
             try:
@@ -823,6 +818,7 @@ def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[
         if resp:
             try:
                 data = resp.json()
+                topic_added = 0
                 for repo in data.get("items", []):
                     if repo.get("archived"):
                         continue
@@ -842,7 +838,8 @@ def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[
                         "stars_today": "高分口碑",
                         "topic_category": topic_label
                     })
-                    if len(candidate_gems) >= 8:
+                    topic_added += 1
+                    if topic_added >= 4 or len(candidate_gems) >= 8:
                         break
             except Exception as e:
                 print(f"  [警告] 解析高分榜搜索结果异常 ({topic_label}): {e}")
