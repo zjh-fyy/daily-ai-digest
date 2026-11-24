@@ -633,165 +633,169 @@ def collect_ai_news(
 fetch_ai_and_perks_news = collect_ai_news
 
 
+def _parse_trending_page(html_text: str, period_label: str, normalized_seen: Set[str], existing_names: Set[str]) -> List[Dict[str, Any]]:
+    """解析 GitHub Trending (daily / weekly) 页面并按涨星数从高到低排序"""
+    soup = BeautifulSoup(html_text, "html.parser")
+    rows = soup.select("article.Box-row")
+    parsed: List[Dict[str, Any]] = []
+
+    for row in rows[:25]:
+        title_elem = row.select_one("h2 a")
+        if not title_elem:
+            continue
+
+        repo_path = title_elem.get("href", "").strip().lstrip("/")
+        repo_url = f"https://github.com/{repo_path}"
+        name = re.sub(r"\s+", "", title_elem.text)
+        fn_lower = name.lower()
+
+        if repo_path.lower() in normalized_seen or fn_lower in normalized_seen or fn_lower in existing_names:
+            continue
+
+        desc_elem = row.select_one("p")
+        description = desc_elem.text.strip() if desc_elem else "暂无项目描述"
+
+        lang_elem = row.select_one("span[itemprop='programmingLanguage']")
+        language = lang_elem.text.strip() if lang_elem else "Unknown"
+
+        stars_elem = row.select_one("span.d-inline-block.float-sm-right")
+        raw_delta = stars_elem.text.strip() if stars_elem else ""
+        if not raw_delta:
+            m_delta = re.search(r"(\d[\d,]*)\s+stars?\s+(today|this week)", row.text, re.IGNORECASE)
+            raw_delta = m_delta.group(0) if m_delta else ""
+
+        num_m = re.search(r"(\d[\d,]*)", raw_delta)
+        delta_num = int(num_m.group(1).replace(",", "")) if num_m else 0
+        stars_today_disp = f"{period_label} +{delta_num:,}" if delta_num > 0 else period_label
+
+        total_stars_elem = row.select_one("a[href$='/stargazers']")
+        total_stars = total_stars_elem.text.strip() if total_stars_elem else "N/A"
+
+        parsed.append({
+            "name": name,
+            "url": repo_url,
+            "description": description,
+            "language": language,
+            "stars_today": stars_today_disp,
+            "total_stars": total_stars,
+            "_delta_num": delta_num,
+        })
+
+    # 严格按当期涨星数从高到低排序，谁最火谁排前面，不做人为领域偏置
+    parsed.sort(key=lambda x: x.get("_delta_num", 0), reverse=True)
+    for p in parsed:
+        p.pop("_delta_num", None)
+    return parsed
+
+
 def collect_github_trending(seen_repos: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
-    """抓取今日 GitHub Trending 热门榜单，自带 GitHub Search API 优雅降级与跨天防重复"""
-    print("\n[3/3] 正在抓取【GitHub Trending 今日热门】...")
-    trending_url = "https://github.com/trending?since=daily"
-    resp = http_get(trending_url)
-    projects = []
+    """
+    抓取全站真实热度最高的飙升项目（拒绝信息茧房，纯按涨星热度选拔）：
+    1. 第一顺位：GitHub Trending 今日榜 (since=daily)，按今日新增 Star 从高到低排
+    2. 第二顺位：若日榜去重后不足 6 个，自动用 GitHub Trending 本周榜 (since=weekly) 按周涨星数补齐
+    3. 第三顺位：仅在网页不可达时，用近期高星活跃项目 API 兜底
+    """
+    print("\n[3/4] 正在抓取【GitHub 飙升榜（全领域按热度排序）】...")
+    projects: List[Dict[str, Any]] = []
+    normalized_seen = {r.lower() for r in (seen_repos or set())}
+    existing_names: Set[str] = set()
 
-    normalized_seen_repos = {r.lower() for r in (seen_repos or set())}
+    for since, label in [("daily", "今日"), ("weekly", "本周")]:
+        resp = http_get(f"https://github.com/trending?since={since}")
+        if resp:
+            try:
+                batch = _parse_trending_page(resp.text, label, normalized_seen, existing_names)
+                for item in batch:
+                    projects.append(item)
+                    existing_names.add(item["name"].lower())
+                print(f"  -> GitHub Trending ({label}榜) 去重后提取 {len(batch)} 个项目 (累计 {len(projects)} 个)")
+            except Exception as e:
+                print(f"  ⚠️ 解析 GitHub Trending ({label}榜) 异常: {e}")
+        if len(projects) >= 8:
+            break
 
-    if resp:
-        try:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            rows = soup.select("article.Box-row")
-            print(f"  -> GitHub Trending HTML 解析成功，共扫描到 {len(rows)} 个项目")
+    if len(projects) >= 4:
+        return projects[:10]
 
-            for row in rows[:25]:
-                title_elem = row.select_one("h2 a")
-                if not title_elem:
-                    continue
-
-                repo_path = title_elem.get("href", "").strip().lstrip("/")
-                repo_url = f"https://github.com/{repo_path}"
-                name = re.sub(r"\s+", "", title_elem.text)
-
-                if repo_path.lower() in normalized_seen_repos or name.lower() in normalized_seen_repos:
-                    print(f"  [跨天去重] 跳过近期已推荐项目: {name}")
-                    continue
-
-                desc_elem = row.select_one("p")
-                description = desc_elem.text.strip() if desc_elem else "暂无项目描述"
-
-                lang_elem = row.select_one("span[itemprop='programmingLanguage']")
-                language = lang_elem.text.strip() if lang_elem else "Unknown"
-
-                stars_today_elem = row.select_one("span.d-inline-block.float-sm-right")
-                stars_today = stars_today_elem.text.strip() if stars_today_elem else ""
-                if not stars_today:
-                    match = re.search(r"(\d[\d,]*\s+stars?\s+today)", row.text)
-                    stars_today = match.group(1) if match else "N/A"
-
-                total_stars_elem = row.select_one("a[href$='/stargazers']")
-                total_stars = total_stars_elem.text.strip() if total_stars_elem else "N/A"
-
-                projects.append({
-                    "name": name,
-                    "url": repo_url,
-                    "description": description,
-                    "language": language,
-                    "stars_today": stars_today,
-                    "total_stars": total_stars
-                })
-
-            if projects:
-                # 优先将贴近创作者/桌面软件/AI提效/音视频的项目排在前面，避免前 8 个全是纯底层编译器或冷门库
-                creator_pat = re.compile(
-                    r"video|audio|voice|tts|subtitle|whisper|clip|image|photo|camera|raw|ocr|pdf|"
-                    r"markdown|obsidian|note|desktop|windows|gui|app|clipboard|screenshot|screen|"
-                    r"transfer|sync|media|assistant|agent|skill|prompt|workflow|automat|browser",
-                    re.IGNORECASE,
-                )
-                projects.sort(
-                    key=lambda p: (0 if creator_pat.search(f"{p['name']} {p['description']}") else 1)
-                )
-                print(f"  => 成功提取 GitHub Trending {len(projects)} 个项目 (已按创作者实用度优先排序)")
-                return projects
-        except Exception as e:
-            print(f"  ❌ 解析 GitHub Trending HTML 发生异常: {e}")
-
-    # Fallback: 使用 GitHub Search API 获取最近 7 天内新成立的高星热点项目
-    print("  [降级触发] 启动 GitHub Search API 备用方案...")
+    # Fallback: 仅当 Trending 页面均无法访问或数量过少时，查询近 14 天高星项目
+    print("  [降级触发] 启动 GitHub Search API 高星热榜补充...")
     try:
         now_bj = datetime.now(BEIJING_TZ)
-        seven_days_ago = (now_bj - timedelta(days=7)).strftime("%Y-%m-%d")
-        api_url = f"https://api.github.com/search/repositories?q=created:>{seven_days_ago}&sort=stars&order=desc&per_page=15"
+        two_weeks_ago = (now_bj - timedelta(days=14)).strftime("%Y-%m-%d")
+        api_url = f"https://api.github.com/search/repositories?q=created:>{two_weeks_ago}+stars:>300&sort=stars&order=desc&per_page=15"
         api_resp = http_get(api_url)
         if api_resp:
-            data = api_resp.json()
-            for repo in data.get("items", []):
+            for repo in api_resp.json().get("items", []):
                 full_name = repo.get("full_name", "")
-                if full_name.lower() in normalized_seen_repos:
+                fn_lower = full_name.lower()
+                if not full_name or fn_lower in normalized_seen or fn_lower in existing_names:
                     continue
+                sg = repo.get("stargazers_count", 0)
                 projects.append({
                     "name": full_name,
                     "url": repo.get("html_url", ""),
-                    "description": repo.get("description", "暂无描述"),
-                    "language": repo.get("language", "Unknown"),
-                    "stars_today": f"+{repo.get('stargazers_count', 0)} (近期飙升)",
-                    "total_stars": str(repo.get("stargazers_count", 0))
+                    "description": repo.get("description") or "暂无描述",
+                    "language": repo.get("language") or "Unknown",
+                    "stars_today": f"近期 +{sg:,}",
+                    "total_stars": f"{sg:,}"
                 })
-                if len(projects) >= 10:
+                existing_names.add(fn_lower)
+                if len(projects) >= 8:
                     break
-            print(f"  => GitHub Search API 备用方案成功抓取 {len(projects)} 个飙升项目")
     except Exception as e:
-        print(f"  ❌ GitHub Search API 降级方案亦失败: {e}")
+        print(f"  ❌ GitHub Search API 降级方案异常: {e}")
 
     return projects
 
 
-# ==================== 每日经典宝藏项目池 (贴合创作者与桌面效率场景) ====================
+# ==================== 全领域高分口碑榜候选池 (打破信息茧房，只看高分与实用口碑) ====================
 CLASSIC_QUERY_POOL = [
-    {"topic": "生产力与效率工具", "query": "stars:8000..150000 topic:productivity", "sort": "stars"},
-    {"topic": "自动化工作流利器", "query": "stars:5000..90000 topic:automation", "sort": "stars"},
-    {"topic": "桌面端装机实用软件", "query": "stars:8000..120000 desktop app in:readme,description", "sort": "stars"},
-    {"topic": "音视频处理与剪辑工具", "query": "stars:5000..100000 video editor OR subtitle in:description,readme", "sort": "stars"},
-    {"topic": "语音识别与配音工具", "query": "stars:4000..80000 speech OR tts OR audio in:description", "sort": "stars"},
-    {"topic": "Windows 桌面效率增强", "query": "stars:4000..80000 windows utility OR windows app in:description,readme", "sort": "stars"},
-    {"topic": "照片管理与图像增强", "query": "stars:4000..90000 photo OR image upscaler in:description,readme", "sort": "stars"},
-    {"topic": "自托管与家庭媒体中心", "query": "stars:8000..120000 topic:self-hosted", "sort": "stars"},
-    {"topic": "OCR 文字识别与文档提取", "query": "stars:4000..70000 ocr in:description,readme", "sort": "stars"},
-    {"topic": "Markdown 与知识管理", "query": "stars:6000..100000 markdown in:description", "sort": "stars"},
-    {"topic": "浏览器增强与效率扩展", "query": "stars:5000..80000 browser extension in:description", "sort": "stars"},
-    {"topic": "AI 创作与生产力桌面端", "query": "stars:8000..150000 ai desktop OR ai assistant in:description,readme", "sort": "stars"},
-    {"topic": "视觉设计与白板绘图", "query": "stars:6000..100000 whiteboard OR design tool in:description", "sort": "stars"},
-    {"topic": "高速下载与跨端传输", "query": "stars:6000..90000 file transfer OR downloader in:description,readme", "sort": "stars"},
-    {"topic": "数据备份与同步工具", "query": "stars:5000..80000 backup OR sync in:description", "sort": "stars"},
-    {"topic": "PDF 处理与格式转换", "query": "stars:6000..90000 pdf in:description", "sort": "stars"},
-    {"topic": "本地文件秒级搜索", "query": "stars:6000..120000 file search in:description,readme", "sort": "stars"},
-    {"topic": "双链笔记与个人外脑", "query": "stars:6000..100000 note-taking OR obsidian in:description,readme", "sort": "stars"},
-    {"topic": "新一代文件管理器", "query": "stars:6000..90000 file-manager in:description", "sort": "stars"},
-    {"topic": "剪贴板历史与效率工具", "query": "stars:4000..60000 clipboard in:description", "sort": "stars"},
-    {"topic": "截图与屏幕录制工具", "query": "stars:6000..90000 screenshot OR screen recorder in:description", "sort": "stars"},
-    {"topic": "局域网跨设备互传", "query": "stars:5000..90000 airdrop OR lan share in:description,readme", "sort": "stars"},
-    {"topic": "字幕生成与视频翻译", "query": "stars:3500..80000 subtitle OR video translation in:description,readme", "sort": "stars"},
-    {"topic": "本地密码管理保险箱", "query": "stars:7000..100000 password manager in:description", "sort": "stars"},
+    {"topic": "全站殿堂级高星神作", "query": "stars:>45000 archived:false", "sort": "stars"},
+    {"topic": "AI 智能体与应用生态", "query": "stars:>18000 topic:ai archived:false", "sort": "stars"},
+    {"topic": "高口碑桌面与效率软件", "query": "stars:>15000 topic:desktop-app archived:false", "sort": "stars"},
+    {"topic": "自动化与工作流引擎", "query": "stars:>15000 topic:automation archived:false", "sort": "stars"},
+    {"topic": "大模型与开源 AI 工具", "query": "stars:>18000 topic:llm archived:false", "sort": "stars"},
+    {"topic": "现代终端与命令行利器", "query": "stars:>20000 topic:cli archived:false", "sort": "stars"},
+    {"topic": "自托管与私有部署精品", "query": "stars:>20000 topic:self-hosted archived:false", "sort": "stars"},
+    {"topic": "跨平台高星实用工具", "query": "stars:>15000 topic:productivity archived:false", "sort": "stars"},
+    {"topic": "视觉设计、白板与图表", "query": "stars:>15000 topic:design archived:false", "sort": "stars"},
+    {"topic": "网页与浏览器生态利器", "query": "stars:>12000 topic:browser-extension archived:false", "sort": "stars"},
+    {"topic": "知识管理、文档与阅读", "query": "stars:>15000 topic:markdown archived:false", "sort": "stars"},
+    {"topic": "系统增强与硬核工具", "query": "stars:>15000 topic:windows OR topic:macos archived:false", "sort": "stars"},
+    {"topic": "音视频与多媒体名作", "query": "stars:>15000 topic:video OR topic:audio archived:false", "sort": "stars"},
+    {"topic": "信息检索、抓取与数据工具", "query": "stars:>15000 topic:search OR topic:crawler archived:false", "sort": "stars"},
+    {"topic": "开发者口碑瑞士军刀", "query": "stars:>25000 topic:developer-tools archived:false", "sort": "stars"},
+    {"topic": "高分开源客户端与应用", "query": "stars:>20000 topic:electron OR topic:tauri OR topic:flutter archived:false", "sort": "stars"},
 ]
 
 LOCAL_CLASSIC_GEMS_FALLBACK = [
-    {"name": "localsend/localsend", "url": "https://github.com/localsend/localsend", "description": "开源跨平台局域网文件互传工具，免配置打通 iPhone、鸿蒙/安卓与 Windows 电脑秒传大文件。", "language": "Dart", "total_stars": "56000+", "topic": "跨平台局域网传输"},
-    {"name": "mifi/lossless-cut", "url": "https://github.com/mifi/lossless-cut", "description": "免重编码无损秒剪长视频素材的桌面工具，粗剪大体积录屏与相机原片只需几秒。", "language": "TypeScript", "total_stars": "45000+", "topic": "无损极速粗剪"},
-    {"name": "hiroi-sora/Umi-OCR", "url": "https://github.com/hiroi-sora/Umi-OCR", "description": "免费开源离线批量图片与 PDF 文字识别桌面软件，解压即用无需联网。", "language": "Python/C++", "total_stars": "32000+", "topic": "离线截图与文档 OCR"},
-    {"name": "excalidraw/excalidraw", "url": "https://github.com/excalidraw/excalidraw", "description": "手绘风白板绘图工具，适合画视频分镜草图、对比图与思维导图。", "language": "TypeScript", "total_stars": "85000+", "topic": "手绘风白板设计"},
-    {"name": "obsproject/obs-studio", "url": "https://github.com/obsproject/obs-studio", "description": "免费开源屏幕录制与直播推流软件，支持多机位画面合成与显卡硬件编码。", "language": "C/C++", "total_stars": "62000+", "topic": "高清录屏与直播"},
-    {"name": "Stirling-Tools/Stirling-PDF", "url": "https://github.com/Stirling-Tools/Stirling-PDF", "description": "本地部署的全功能 PDF 合并、拆分、压缩、转图片工具箱。", "language": "Java", "total_stars": "52000+", "topic": "全功能 PDF 工具箱"},
-    {"name": "syncthing/syncthing", "url": "https://github.com/syncthing/syncthing", "description": "点对点文件夹自动同步工具，在多台电脑平板间直连同步，不经过第三方网盘。", "language": "Go", "total_stars": "67000+", "topic": "多设备自动同步"},
-    {"name": "pot-app/pot-desktop", "url": "https://github.com/pot-app/pot-desktop", "description": "跨平台划词翻译与截图翻译桌面小工具，支持接入多种大模型接口。", "language": "Rust", "total_stars": "14000+", "topic": "桌面划词与截图翻译"},
-    {"name": "ShareX/ShareX", "url": "https://github.com/ShareX/ShareX", "description": "Windows 平台老牌免费截图、长图拼接、录 GIF 与自动化标注工具。", "language": "C#", "total_stars": "29000+", "topic": "截图与录屏标注"},
-    {"name": "HandBrake/HandBrake", "url": "https://github.com/HandBrake/HandBrake", "description": "跨平台视频格式转换与体积压制软件，支持显卡硬件加速压缩大视频。", "language": "C", "total_stars": "18000+", "topic": "视频压制转换"},
-    {"name": "upscayl/upscayl", "url": "https://github.com/upscayl/upscayl", "description": "开箱即用的本地显卡加速 AI 老照片与模糊图片高清放大桌面软件。", "language": "TypeScript", "total_stars": "34000+", "topic": "AI 图片无损放大"},
-    {"name": "EcoPasteHub/EcoPaste", "url": "https://github.com/EcoPasteHub/EcoPaste", "description": "轻量跨平台剪贴板历史管理工具，本地存储复制过的文字与图片，随取随用。", "language": "Rust/TypeScript", "total_stars": "6000+", "topic": "剪贴板历史管理"},
-    {"name": "rustdesk/rustdesk", "url": "https://github.com/rustdesk/rustdesk", "description": "开源跨平台远程桌面工具，支持手机平板远程控制电脑并自建中继。", "language": "Rust", "total_stars": "78000+", "topic": "跨端远程桌面"},
-    {"name": "gorhill/uBlock", "url": "https://github.com/gorhill/uBlock", "description": "轻量低占用的浏览器广告与弹窗拦截扩展，提升网页浏览清爽度。", "language": "JavaScript", "total_stars": "47000+", "topic": "浏览器广告拦截"},
-    {"name": "keepassxreboot/keepassxc", "url": "https://github.com/keepassxreboot/keepassxc", "description": "纯本地加密存储的开源密码管理器，不依赖云端即可安全管理各平台账号密码。", "language": "C++", "total_stars": "24000+", "topic": "本地密码保险箱"},
-    {"name": "Flow-Launcher/Flow.Launcher", "url": "https://github.com/Flow-Launcher/Flow.Launcher", "description": "Windows 桌面快捷启动与秒搜文件工具，按下快捷键即可快速搜文件、算算术、开软件。", "language": "C#", "total_stars": "10000+", "topic": "Windows 快捷启动器"}
+    {"name": "localsend/localsend", "url": "https://github.com/localsend/localsend", "description": "跨平台局域网文件互传工具，免配置打通手机、平板与电脑高速直传。", "language": "Dart", "total_stars": "58,000+", "topic": "跨平台互传"},
+    {"name": "excalidraw/excalidraw", "url": "https://github.com/excalidraw/excalidraw", "description": "极受欢迎的手绘风在线白板与架构草图工具，打开网页就能画，支持多人协作。", "language": "TypeScript", "total_stars": "92,000+", "topic": "可视化白板"},
+    {"name": "n8n-io/n8n", "url": "https://github.com/n8n-io/n8n", "description": "开源可视化工作流自动化平台，支持把几百种常见软件与 AI 大模型串成自动流水线。", "language": "TypeScript", "total_stars": "75,000+", "topic": "工作流自动化"},
+    {"name": "mifi/lossless-cut", "url": "https://github.com/mifi/lossless-cut", "description": "免重新编码的无损音视频秒剪工具，几十 GB 长视频几秒钟切出片段。", "language": "TypeScript", "total_stars": "45,000+", "topic": "多媒体工具"},
+    {"name": "Stirling-Tools/Stirling-PDF", "url": "https://github.com/Stirling-Tools/Stirling-PDF", "description": "开源高星全功能 PDF 处理工具箱，合并、拆分、转换、压缩一站配齐。", "language": "Java", "total_stars": "55,000+", "topic": "文档效率"},
+    {"name": "ollama/ollama", "url": "https://github.com/ollama/ollama", "description": "在个人电脑上一行命令下载并运行各类开源大模型的最主流工具。", "language": "Go", "total_stars": "125,000+", "topic": "本地大模型"},
+    {"name": "syncthing/syncthing", "url": "https://github.com/syncthing/syncthing", "description": "点对点文件夹实时同步工具，多设备直接加密互传同步，不经过第三方云盘。", "language": "Go", "total_stars": "68,000+", "topic": "多端同步"},
+    {"name": "rustdesk/rustdesk", "url": "https://github.com/rustdesk/rustdesk", "description": "开源跨平台远程桌面软件，支持开箱即用或自建中继服务器。", "language": "Rust", "total_stars": "82,000+", "topic": "远程桌面"},
+    {"name": "langgenius/dify", "url": "https://github.com/langgenius/dify", "description": "高人气开源大模型应用开发平台，可视化搭建 AI 知识库问答与自动化工作流。", "language": "TypeScript/Python", "total_stars": "80,000+", "topic": "AI 应用平台"},
+    {"name": "hiroi-sora/Umi-OCR", "url": "https://github.com/hiroi-sora/Umi-OCR", "description": "免费开源离线批量图片与 PDF 文字识别软件，解压即用。", "language": "Python/C++", "total_stars": "33,000+", "topic": "离线 OCR"},
+    {"name": "shadcn-ui/ui", "url": "https://github.com/shadcn-ui/ui", "description": "席卷前端与 AI 建站圈的高颜值现代界面组件集，直接复制源码即可定制。", "language": "TypeScript", "total_stars": "84,000+", "topic": "现代 UI 设计"},
+    {"name": "upscayl/upscayl", "url": "https://github.com/upscayl/upscayl", "description": "开源跨平台 AI 图片高清放大桌面软件，把低清模糊图一键超分。", "language": "TypeScript", "total_stars": "35,000+", "topic": "AI 图像工具"},
+    {"name": "open-webui/open-webui", "url": "https://github.com/open-webui/open-webui", "description": "功能极其丰富的自托管 AI 聊天工作台，兼容本地模型与各类 OpenAI 接口。", "language": "Python/Svelte", "total_stars": "72,000+", "topic": "AI 交互工作台"},
+    {"name": "astral-sh/uv", "url": "https://github.com/astral-sh/uv", "description": "Rust 编写的新一代极速 Python 包与环境管理器，比传统 pip 快几十倍。", "language": "Rust", "total_stars": "48,000+", "topic": "现代开发利器"},
+    {"name": "ShareX/ShareX", "url": "https://github.com/ShareX/ShareX", "description": "Windows 平台老牌全能截图、录屏、长图与自动化工作流工具。", "language": "C#", "total_stars": "30,000+", "topic": "桌面效率"},
+    {"name": "microsoft/PowerToys", "url": "https://github.com/microsoft/PowerToys", "description": "微软官方出品的 Windows 效率百宝箱，含窗口分屏、全局快搜、取色器、批量重命名等二十多种实用功能。", "language": "C#", "total_stars": "116,000+", "topic": "系统增强"}
 ]
 
 
 def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
     """
-    抓取板块三“每日经典宝藏项目”候选池：
-    1. 基于北京时间日期 YYYY-MM-DD 计算确定性哈希种子，从 32 个领域查询池中轮换抽取 2 个主题
-    2. 调用 GitHub Search API 检索高分殿堂级项目，过滤掉已在今日 Trending 中的项目
-    3. 挑选 6~8 个候选高分宝藏项目传给大模型做深度推荐
-    4. 自带 22+ 本地精选项目切片轮换兜底，防止 GitHub API 限流
+    抓取板块三“高分口碑榜”候选池（全网视野，不设信息茧房）：
+    1. 按北京时间日期确定性轮换抽取 2 个大类 + 动态翻页 (page 1~3)，确保每天既有几万星的口碑硬货，又不翻来覆去只看榜首那两个
+    2. 过滤已归档停更仓库与近 30 天已推仓库
     """
-    print("\n[4/4] 正在检索【GitHub 每日经典宝藏/殿堂级项目】候选池...")
-    if exclude_names is None:
-        exclude_names = set()
-    else:
-        exclude_names = {n.lower() for n in exclude_names}
+    print("\n[4/4] 正在检索【GitHub 全领域高分口碑榜】候选池...")
+    exclude_set = {n.lower() for n in (exclude_names or set())}
 
     now_bj = datetime.now(BEIJING_TZ)
     date_str = now_bj.strftime("%Y-%m-%d")
@@ -799,63 +803,61 @@ def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[
 
     pool_len = len(CLASSIC_QUERY_POOL)
     idx1 = seed % pool_len
-    idx2 = (seed // pool_len + 7) % pool_len
+    idx2 = (seed // pool_len + 5) % pool_len
     if idx2 == idx1:
         idx2 = (idx1 + 1) % pool_len
 
+    page_num = 1 + ((seed // 97) % 3)  # 在前 3 页高分榜之间轮换，每页都是上万 Star 的精品
     selected_queries = [CLASSIC_QUERY_POOL[idx1], CLASSIC_QUERY_POOL[idx2]]
-    print(f"  🎯 今日宝藏探索主题: 1.【{selected_queries[0]['topic']}】 2.【{selected_queries[1]['topic']}】 (确定性日期种子: {seed})")
+    print(f"  🎯 今日高分探索方向: 1.【{selected_queries[0]['topic']}】 2.【{selected_queries[1]['topic']}】 (第 {page_num} 页)")
 
     candidate_gems: List[Dict[str, Any]] = []
     seen_repo_names = set()
 
     for q_item in selected_queries:
         topic_label = q_item["topic"]
-        q_text = q_item["query"]
-        encoded_q = urllib.parse.quote(q_text)
-        api_url = f"https://api.github.com/search/repositories?q={encoded_q}&sort={q_item['sort']}&order=desc&per_page=10"
+        encoded_q = urllib.parse.quote(q_item["query"])
+        api_url = f"https://api.github.com/search/repositories?q={encoded_q}&sort={q_item['sort']}&order=desc&per_page=12&page={page_num}"
 
         resp = http_get(api_url)
         if resp:
             try:
                 data = resp.json()
-                for repo in data.get("items", [])[:8]:
+                for repo in data.get("items", []):
+                    if repo.get("archived"):
+                        continue
                     full_name = repo.get("full_name", "")
                     fn_lower = full_name.lower()
-                    if not full_name or fn_lower in exclude_names or fn_lower in seen_repo_names:
+                    if not full_name or fn_lower in exclude_set or fn_lower in seen_repo_names:
                         continue
 
                     seen_repo_names.add(fn_lower)
-                    desc = repo.get("description") or "暂无项目描述"
-                    lang = repo.get("language") or "Unknown"
                     stargazers = repo.get("stargazers_count", 0)
-
                     candidate_gems.append({
                         "name": full_name,
                         "url": repo.get("html_url", f"https://github.com/{full_name}"),
-                        "description": desc,
-                        "language": lang,
+                        "description": repo.get("description") or "暂无项目描述",
+                        "language": repo.get("language") or "Unknown",
                         "total_stars": f"{stargazers:,}",
-                        "stars_today": "经典高分宝藏",
+                        "stars_today": "高分口碑",
                         "topic_category": topic_label
                     })
                     if len(candidate_gems) >= 8:
                         break
             except Exception as e:
-                print(f"  [警告] 解析宝藏搜索结果异常 ({topic_label}): {e}")
+                print(f"  [警告] 解析高分榜搜索结果异常 ({topic_label}): {e}")
 
         if len(candidate_gems) >= 8:
             break
 
-    # 兜底补充逻辑：若因网络或 GitHub API 限流导致候选少于 4 个，从本地兜底池切片轮换补充
     if len(candidate_gems) < 6:
-        print(f"  [宝藏池兜底机制] API 候选数量较少 ({len(candidate_gems)} 个)，启动本地精选殿堂级项目切片补充...")
+        print(f"  [兜底补充] API 候选较少 ({len(candidate_gems)} 个)，从本地高分名作池补充...")
         fallback_len = len(LOCAL_CLASSIC_GEMS_FALLBACK)
         start_offset = seed % fallback_len
         for i in range(fallback_len):
             fb_item = LOCAL_CLASSIC_GEMS_FALLBACK[(start_offset + i) % fallback_len]
             fn_lower = fb_item["name"].lower()
-            if fn_lower not in exclude_names and fn_lower not in seen_repo_names:
+            if fn_lower not in exclude_set and fn_lower not in seen_repo_names:
                 seen_repo_names.add(fn_lower)
                 candidate_gems.append({
                     "name": fb_item["name"],
@@ -863,13 +865,13 @@ def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[
                     "description": fb_item["description"],
                     "language": fb_item["language"],
                     "total_stars": fb_item["total_stars"],
-                    "stars_today": "经典高分宝藏",
-                    "topic_category": fb_item.get("topic", "精选神器")
+                    "stars_today": "高分口碑",
+                    "topic_category": fb_item.get("topic", "高分精品")
                 })
             if len(candidate_gems) >= 8:
                 break
 
-    print(f"  => 成功就绪 {len(candidate_gems)} 个高分经典宝藏候选项目供大模型精编")
+    print(f"  => 成功就绪 {len(candidate_gems)} 个全领域高分口碑候选项目")
     return candidate_gems
 
 
@@ -992,38 +994,33 @@ def fetch_repo_live_info(full_name: str) -> Dict[str, Any]:
 
 
 def build_hard_facts(info: Dict[str, Any]) -> List[str]:
-    """由代码直接判定的硬性事实，模型必须原样体现，不得淡化"""
+    """提取仓库客观事实供模型自然融入短评，不替模型硬造口癖"""
     facts = []
     if info.get("archived"):
-        facts.append("仓库已被作者归档（archived），彻底停止维护")
+        facts.append("仓库已归档停止维护")
     days = info.get("days_since_last_push")
     if isinstance(days, int) and days > 180:
-        facts.append(f"已经 {days} 天没有更新代码，属于长期没人维护，必须如实写明")
+        facts.append(f"距上次代码更新已 {days} 天")
     age = info.get("project_age_days")
-    if isinstance(age, int) and age < 90:
-        facts.append(f"项目创建才 {age} 天，非常新，可能不稳定")
+    if isinstance(age, int) and age < 30:
+        facts.append(f"仓库刚创建 {age} 天，属于早期新项目")
     badges = " ".join((info.get("readme") or {}).get("badges", []))
     intro = (info.get("readme") or {}).get("intro", "")
     m = re.search(r"\b(early alpha|alpha|beta|experimental|preview)\b", badges + " " + intro[:400], re.IGNORECASE)
     if m:
-        facts.append(f"README 自己标注为 {m.group(1)}（测试/早期版本）")
-    if re.search(r"(community )?fork of|no longer maintained|unmaintained|abandoned", intro, re.IGNORECASE):
-        facts.append("README 提到项目是别人接手的分支或原项目已停止维护")
+        facts.append(f"README 标注为 {m.group(1)} 早期/测试阶段")
     rel = info.get("latest_release")
     if isinstance(rel, str):
-        facts.append("没有发布任何安装包，只能自己从源码部署")
+        facts.append("无现成安装包（需命令行/源码部署或直接在线访问）")
     elif isinstance(rel, dict):
         stable = info.get("latest_stable_release")
-        if rel.get("is_prerelease"):
-            facts.append(f"最新版本 {rel.get('tag')} 是预发布（测试）版")
         platforms = set(rel.get("installer_platforms") or [])
         if stable:
             platforms |= set(stable.get("installer_platforms") or [])
-        if "Windows" not in platforms:
-            facts.append(
-                "最近的发布版本里没有 Windows 安装包，不能写“下载安装即用”"
-                + (f"（现有安装包平台：{'/'.join(sorted(platforms))}）" if platforms else "")
-            )
+        if platforms:
+            facts.append(f"提供现成安装包平台：{'/'.join(sorted(platforms))}")
+        else:
+            facts.append("Release 中暂无桌面安装包，通常需命令行或包管理器安装")
     return facts
 
 
@@ -1101,12 +1098,6 @@ def build_digest_prompt(
     }
     context_json = json.dumps(context_data, ensure_ascii=False, indent=2)
 
-    reader_profile = load_reader_profile()
-    profile_section = f"""
-### 🙋 读者画像（供板块三判断项目实不实用，切忌生搬硬套）
-{reader_profile}
-""" if reader_profile else ""
-
     blacklist_section = ""
     if blacklist_summary and blacklist_summary.strip() != "暂无近期历史黑名单":
         blacklist_section = f"""
@@ -1125,7 +1116,6 @@ def build_digest_prompt(
 
 ### 📦 原始数据底座 (JSON)
 {context_json}
-{profile_section}
 {blacklist_section}
 ---
 
@@ -1133,7 +1123,7 @@ def build_digest_prompt(
 1. **像熟人聊天一样说人话**：用自然、顺畅、一读就懂的现代口语化书面语，把复杂事情讲简单。读起来要像一个懂行的好朋友直接告诉你重点，不要像公文、社论或律所免责声明。
 2. **彻底戒掉“否定说教体 / 杠精句式”**：
    - **全文严禁扎堆出现** `“不是A，而是B”`、`“不只是…更是…”`、`“A不等于B”`、`“不能据此认定/推导出…”`、`“不宜把…直接理解为…”`、`“需要把X和Y分开看”` 这类句式！
-   - 读者没有误解的事，不要自己立个稻草人去反驳或泼冷水。比如减刑就是“改判终身监禁”，直接写“把 548 名死囚改判为终身监禁”就一清二楚，不要写“减刑为终身监禁，不是释放”；测试版功能直接写“苹果在 iOS 测试版里试水某某功能”，不要绕弯写“代码中的测试内容不等于已正式发布，也不保证最终上线”。
+   - 读者没有误解的事，不要自己立个稻草人去反驳或泼冷水。
 3. **有料多聊细节，没料干脆简写，绝不注水**：
    - 数据底座里有具体数字、产品型号、前因后果的，把干货细节写出来；
    - 如果某条新闻原始数据里只有简短标题快讯、缺乏细节，就痛快用两句话把已知动态交代清楚，**绝对不要为了凑字数去写“后续值得观察、需要权衡多方利益”这种正确的废话**。
@@ -1164,36 +1154,23 @@ def build_digest_prompt(
 - 每条末尾附真实来源链接 `[🔗 查看原文：媒体名](链接)`。
 
 #### 🔥 板块三：GitHub 开源项目寻宝
-- **黑名单铁律**：近 {HISTORY_KEEP_DAYS} 天推过的仓库一律跳过。
-- **把读者当不懂写代码的朋友**：如果正文不得不提技术词，第一次出现时顺口用括号大白话解释一句（例：`Docker（相当于在电脑里开个独立小隔间来装软件，不弄乱主系统）`）。**打比方必须接地气、一眼秒懂**，严禁造出比原词更绕口的比喻！
-- **事实以 `live_info` 为准，提醒要真诚自然**：
-  - 每个项目的实时资料（README 摘要、最新 Release 安装包平台、最后更新时间、创建天数、`hard_facts`）都是刚从 GitHub 查出来的。资料里没写的功能不脑补，禁用“神器、吊打、完美平替、零门槛、一键丝滑”这类夸张词。
-  - `live_info.hard_facts` 里的硬事实（如“没有 Windows 安装包”、“项目刚建 X 天还很早期”、“测试版”、“超过半年没更新”）必须在「🚪 上手门槛」或「⚠️ 提前避坑」里如实告诉读者，但请用**朋友提醒的口吻**自然说出来，不要像背诵免责条款。
-- **「🙋 适合我装吗」自然贴合画像，严禁生搬硬套**：
-  - 只有当这个项目真的跟读者的日常需求（做数码/摄影视频、剪辑字幕配音、修图管照片、跨设备传文件）或现有方案（Immich 相册、Emby 影视库、Obsidian 笔记、Win11 + RTX 4060 8G + 16G 内存、iPhone + 华为平板）**同赛道或能互补**时，才拿出来对比，说说值不值得折腾；
-  - 如果项目本来就跟读者领域不沾边（比如纯程序员查代码用的工具），直接痛快写一句“这是给程序员写代码用的，咱们平时拍片剪辑用不上，看看新鲜就行”，**严禁硬凑“它不能增强你的 Immich，也不能帮你挑废片”这种废话**！
+- **选品不设信息茧房，纯看真实热度与口碑**：
+  - 不需要刻意筛选某个单一行业（AI、效率工具、桌面软件、自动化、网页应用、系统黑科技、开发者利器都可以），哪个热度最高、分最高、最值得开眼界或最好用，就选哪个！
+  - 黑名单铁律：近 {HISTORY_KEEP_DAYS} 天推过的仓库一律跳过。
+- **写法铁律：朋友安利式连贯短评（严禁列固定小标题填表！）**：
+  - **坚决禁止**输出 `📌 一句话说清`、`💡 打个比方`、`🎬 平时能怎么用`、`🚪 上手门槛`、`⚠️ 提前避坑`、`🙋 适合我装吗` 这类机械填空列表！
+  - 每个项目标题下面，直接写 **1~2 个自然连贯的短段（130~190 字左右）**，像懂行的朋友随口给你介绍新发现一样，一口气顺畅讲明白：
+    1. **这项目到底是干啥的**（把读者当对科技好奇但不一定写代码的朋友，用大白话把核心用途说透；遇到必须提的专业词，顺手用括号带一句人话解释）；
+    2. **它凭啥火 / 好用在哪**（依据 `live_info` 里的真实 README 资料，讲讲它解决了什么痛点、亮点在哪，禁用“神器、吊打、完美平替”这类吹牛词，资料没写的不脑补）；
+    3. **怎么用 / 门槛实话**（在段尾顺嘴带一句实在情况：比如有没有现成的 Windows/桌面安装包下载就能用、打开网页就能试，还是得敲命令行部署、或者主要是给程序员写代码用的工具；如果是刚建几天的早期新项目也顺口提一嘴）。
 
 - 固定分两个子部分输出：
-  1. `### 📈 今日飙升热榜`（从 `raw_github_trending` 挑 **3 个**，优先挑普通人或自媒体创作者能用上的；纯开发者工具最多选 1 个）：
-     格式（每个项目 250~350 字）：
-     `### 序号. [项目名](链接) 🌟 今日 +新增Stars / 总Stars | 语言`
-     - **📌 一句话说清**：不带术语，一句大白话讲明白它是个啥。
-     - **💡 打个比方**：用生活里一听就懂的例子类比它的作用。
-     - **🎬 平时能怎么用**：结合 README 支持的真实功能，举 1~2 个具体用法。
-     - **🚪 上手门槛**：三选一并顺嘴说明原因——「下载安装即用」（仅限最新发布有 Windows 安装包时可用）/「需要跟着教程敲几行命令」/「需要会编程，仅开发者适用」。
-     - **⚠️ 提前避坑**：1~2 条实在提醒（是不是刚建几天的新项目、测试版、缺 Windows 安装包、吃不吃配置、收不收费等）。
-     - **🙋 适合我装吗**：「✅ 值得一试」/「🤔 可以先收藏观望」/「❌ 跟你关系不大」三选一，用大白话给个实在建议。
-
-  2. `### 💎 每日宝藏推荐`（从 `raw_github_classic_gems` 挑 **2 个**，优先挑 Windows 桌面能用、对创作或日常提效有帮助的）：
-     格式（每个项目 280~380 字）：
-     `### 🌟 宝藏推荐 序号：[项目名](链接) 🏆 总Stars | 语言`
-     - **📌 一句话说清**：同上。
-     - **💡 打个比方**：同上。
-     - **🎬 平时能怎么用**：同上。
-     - **🆚 和常见软件比**：跟大家平时熟悉的同类软件比，实在说说它好在哪、哪块还不如商业软件。
-     - **🚪 上手门槛**：同上，有现成安装包的可提示去项目页右侧 Releases 下载。
-     - **⚠️ 提前避坑**：同上。
-     - **🙋 适合我装吗**：同上。
+  1. `### 📈 今日飙升榜`
+     - 从 `raw_github_trending` 中挑涨星最猛、最火的 **3 个**项目（基本按热度排名前列挑选即可）。
+     - 标题格式：`### 序号. [项目名](链接) 🌟 涨星数 / 总Stars | 语言`（如 `### 1. [owner/repo](链接) 🌟 今日 +2,406 / 18,500 Stars | Python`），紧跟 1~2 段朋友式连贯短评。
+  2. `### 🏆 高分口碑榜`
+     - 从 `raw_github_classic_gems` 中挑 **2 个**星数高、口碑硬、公认好用的高质量项目。
+     - 标题格式：`### 🏆 序号. [项目名](链接) ⭐ 总Stars | 语言`，紧跟 1~2 段朋友式连贯短评。
 """
     return prompt
 
