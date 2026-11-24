@@ -1,13 +1,13 @@
 # 🌅 每日 AI & 全球资讯早报 (Daily AI & Global Digest)
 
-> 基于 **GitHub Actions 云端定时生成（GPT-6.1-sol）+ QQ 邮箱推送** 的每日自动化早报系统。每天早上把全球要闻、AI 御三家与科技四巨头动态、GitHub 热门项目推送到你的邮箱 / 微信「QQ邮箱提醒」。
+> 基于 **GitHub Actions 云端定时生成（GPT-6.2-sol）+ QQ 邮箱推送** 的每日自动化早报系统。每天早上用通俗好懂的大白话把全球要闻、AI 御三家与科技四巨头动态、GitHub 热门实用项目推送到你的邮箱 / 微信「QQ邮箱提醒」。
 
 ---
 
 ## 🌟 早报内容
 
 1. **🌍 板块一：全球时事**
-   - 过去 24 小时最关键的 4~5 条国际政经 / 科技 / 地缘热点，讲清前因后果、各方态度与影响，并附来源链接。
+   - 过去 24 小时最关键的 4~5 条国际政经 / 科技 / 社会热点，直白讲清来龙去脉与实在影响，附来源链接。
 2. **🤖 板块二：AI 核心御三家 & 科技四巨头**
    - **🧠 AI 御三家**：OpenAI (GPT / Codex)、Google (Gemini / Antigravity)、Anthropic (Claude)。
    - **⚡ 科技四巨头**：
@@ -17,11 +17,11 @@
      - **苹果 Apple**：新品与发布会、A/M 系列芯片、iPhone / Mac / iPad / AirPods / Watch、iOS / macOS 与 Apple Intelligence
    - 某家当天没有实质新闻时宁缺毋滥，不凑数。
 3. **🔥 板块三：GitHub 开源项目寻宝**
-   - **📈 今日飙升热榜**：每天精选 **3 个** GitHub Trending 项目。
-   - **💎 每日宝藏推荐**：每天 **2 个** 经典高星项目（32 个领域按日期轮换 + 22 个本地精选兜底）。
-   - 面向**不懂编程的读者**撰写，每个项目固定包含：📌 一句话说清 / 💡 打个比方 / 🎬 能怎么用 / 🚪 上手门槛 / ⚠️ 要注意 / 🙋 对我有用吗（宝藏项目额外有 🆚 和谁比）。
-   - 每个候选项目都会**实时拉取 GitHub 最新资料**（README、最新版本与安装包平台、最后更新时间、是否测试版），模型只能依据这些资料写，测试版、停更、新项目必须如实标注。
-   - 「🙋 对我有用吗」依据 `reader_profile.md`（个人硬件与已部署的相册、影视库等方案）判断。该文件不提交到公开仓库，云端使用 Secret `READER_PROFILE`，修改后需重新同步该 Secret。
+   - **📈 今日飙升热榜**：每天精选 **3 个** GitHub Trending 项目（优先筛选普通人/创作者能用上的工具）。
+   - **💎 每日宝藏推荐**：每天 **2 个** 经典高星桌面/效率项目（24 个创作与效率主题按日期轮换 + 16 个精选兜底）。
+   - 面向**不懂编程的读者**撰写，每个项目固定包含：📌 一句话说清 / 💡 打个比方 / 🎬 平时能怎么用 / 🚪 上手门槛 / ⚠️ 提前避坑 / 🙋 适合我装吗（宝藏项目额外有 🆚 和常见软件比）。
+   - 每个候选项目都会**实时拉取 GitHub 最新资料**（README、最新版本与安装包平台、最后更新时间、是否测试版），实事求是不吹捧，测试版、停更、新项目自然提醒。
+   - 「🙋 适合我装吗」依据 `reader_profile.md`（个人硬件与已部署方案）判断，同赛道才对比，无关工具痛快说明，不生搬硬套。
    - **30 天内不重复推荐**同一个项目。
 
 ---
@@ -30,18 +30,18 @@
 
 ```mermaid
 flowchart TD
-    B["⏰ GitHub Actions 定时任务 (北京时间 02:17 触发，排队后约早上 6~9 点运行)"] --> C{"仓库里有今天的早报？"}
+    B["⏰ 定时触发 (外部 08:10 秒级唤醒 / GitHub Cron 00:47 提前排队 + 07:13 兜底)"] --> I{"今日是否已发过邮件？"}
+    I -->|已发过且非强制| S["⏭️ 1 秒幂等跳过（不重复扣费发信）"]
+    I -->|未发过| C{"仓库里有今天的预生成早报？"}
     C -->|有| D["直接推送"]
-    C -->|没有| E["云端现场采集 + GPT-6.1-sol 生成"]
-    E -->|GPT 也失败| F["本地数据底座应急稿"]
+    C -->|没有| E["云端多源采集 + GPT-6.2-sol (Medium) 提炼"]
+    E -->|GPT 异常| F["本地数据底座应急稿"]
     E --> D
     F --> D
-    D -->|发送成功| H["💾 早报提交回仓库 prebuilt/"]
+    D -->|发送成功| H["💾 写入 sent_at 标记并归档至 prebuilt/"]
     D -->|发送失败| X["❌ 任务标红，不归档"]
     D --> G["📧 QQ 邮箱推送 → 微信「QQ邮箱提醒」弹窗"]
 ```
-
-> 本机夜间预生成（计划任务 `AI早报-夜间预生成` + 本地 Antigravity 网关）自 2026-11-15 起已停用，目前每天都由云端现场生成。代码仍保留 `PREBUILD_MODE=1` 的预生成能力，重新启用时把稿子放到 `prebuilt/当天日期.md` 即可被云端直接发送。
 
 ---
 
@@ -50,10 +50,10 @@ flowchart TD
 | 顺序 | 引擎 | 运行位置 | 所需配置 |
 | :--- | :--- | :--- | :--- |
 | 1 | **Gemini 4 Hydrogen**（本地 Antigravity 网关，当前停用） | 仅本机 | `LOCAL_LLM_API_KEY`，可选 `LOCAL_LLM_BASE_URL`、`LOCAL_LLM_MODEL` |
-| 2 | **GPT-6.1-sol (High)**（`/v1/responses` 协议） | 本机备用 / 云端主力 | `CODEX_API_KEY` 或 `AIZEX_API_KEY`（两个 Key 可互为备份） |
+| 2 | **GPT-6.2-sol (Medium)**（`/v1/responses` 协议） | 本机 / 云端主力 | `CODEX_API_KEY` 或 `AIZEX_API_KEY`（双 Key 自动互备） |
 | 3 | **本地数据底座应急稿** | 任意 | 无需配置，所有模型都失败时自动启用 |
 
-GPT 节点自动在 `ca.memofun.net` 与 `codex-api.aizex.net` 之间轮换（云端优先后者），最多重试 3 次，第 3 次自动改为非流式请求。也可用 `CODEX_BASE_URL` / `AIZEX_BASE_URL` 指定自定义节点。
+本机默认优先走推荐香港节点 `ca.memofun.net`，云端 GitHub Actions 默认优先走 CloudFlare 全球节点 `codex-api.aizex.net`，失败时自动互切并支持流式/非流式三级自愈重试。
 
 > 预生成模式下若模型全部失败，不会把应急稿落盘，云端第二天会自己重新生成。
 
@@ -104,17 +104,19 @@ copy .env.example .env
 
 | Secret | 是否必填 | 说明 |
 | :--- | :--- | :--- |
-| `CODEX_API_KEY` | 必填（与下一项至少一个） | GPT-6.1-sol 的 API Key |
+| `CODEX_API_KEY` | 必填（与下一项至少一个） | GPT-6.2-sol 的 API Key |
 | `AIZEX_API_KEY` | 选填 | 备用 Key |
 | `CODEX_BASE_URL` / `AIZEX_BASE_URL` | 选填 | 自定义 API 节点 |
-| `CODEX_MODEL` / `CODEX_EFFORT` | 选填 | 默认 `gpt-6.1-sol` / `high` |
+| `CODEX_MODEL` / `CODEX_EFFORT` | 选填 | 默认 `gpt-6.2-sol` / `medium` |
 | `EMAIL_SENDER` | 必填 | 发件邮箱，如 `xxx@qq.com` |
 | `EMAIL_PASSWORD` | 必填 | 邮箱 SMTP 授权码（不是登录密码） |
 | `EMAIL_RECEIVER` | 选填 | 收件邮箱，留空发给自己 |
 | `SMTP_SERVER` | 选填 | 如 `smtp.qq.com:465`，默认按邮箱后缀自动识别 |
 | `READER_PROFILE` | 选填 | `reader_profile.md` 的全文，用于个性化分析 GitHub 项目 |
 
-**定时说明**：`.github/workflows/daily_digest.yml` 中 `cron: '17 18 * * *'`（UTC 18:17 = 北京时间 02:17）。GitHub 定时任务会排队，2026 年 11 月实测延迟 3 小时 43 分到 6 小时 46 分，按此推算约早上 6~9 点送达，但无法保证准点。如果送达时间又明显变晚，可以再把 cron 往前调。邮件发送失败时任务会标红，不会把稿子归档。工作流需要 `contents: write` 权限，用于把当天早报提交回仓库。
+**准点送达说明**：
+- 工作流默认配置了 `cron: '47 16 * * *'`（北京时间 `00:47` 入队，结合 GitHub 实测 5~8.5 小时排队延迟，约早上 `06:00~09:20` 送达）+ `13 23 * * *` 兜底调度，并内置 `sent_at` 幂等防重锁（每天最多只发 1 次，绝不重复扣费或重发）。
+- 若需**每天早上 08:10 分秒不差准点送达**（彻底绕开 GitHub `schedule` 排队波动），可在免费服务 [cron-job.org](https://cron-job.org) 或 Cloudflare Workers 中配置每天 `08:10 (Asia/Shanghai)` 发送 `POST https://api.github.com/repos/zjh-fyy/daily-ai-digest/actions/workflows/daily_digest.yml/dispatches`（Body: `{"ref":"main"}`），`workflow_dispatch` 秒级启动，约 `08:14` 准时送达。
 
 手动测试：仓库 **Actions → Daily AI & Global Digest → Run workflow**。
 
