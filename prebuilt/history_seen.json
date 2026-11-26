@@ -985,6 +985,55 @@
       ],
       "updated_at": "2026-11-25T09:09:46.922943+08:00",
       "sent_at": "2026-11-25T09:09:46.922943+08:00"
+    },
+    "2026-11-26": {
+      "urls": [
+        "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+        "https://github.com/ag-ui-protocol/ag-ui",
+        "https://github.com/kajisho5/ffmpeg-skill",
+        "https://github.com/ohmyzsh/ohmyzsh",
+        "https://github.com/upscayl/upscayl",
+        "https://news.google.com/rss/articles/CBMiSEFVX3lxTE94OENyckl5R0N0MVBXWWhJTnRqeThyLWhEU2oxWi04eC1YVkY5UllGdGYxSlJwMk5BOHJUWkF6N0tCRGsxQm9OLQ?oc=5",
+        "https://news.google.com/rss/articles/CBMiY0FVX3lxTE5nd3RzR3BVNUlfZThnS2ZGNHBnWEI2Q0NucUYyTzU0Zm5MZDNXZGVqVTc2Zlhsa1NCNFl5UlFmbWhyZ1REbFBqaWFuSVl1cWttcUw4QWxqN09PdG1LSnkyMnVTRQ?oc=5",
+        "https://news.google.com/rss/articles/CBMiZ0FVX3lxTE91blh2eENvd0hsR25fTlhrSkktUlc3djUxb3NYdGo2dm1maGJfZlhvU3NhSS1rWk45WDczZnpiUzVrOEFWVVA1aDRfSXo3YkpfY0RuSzdESDVlU1FqN1VBV1N3Mm5ZdTQ?oc=5",
+        "https://www.bbc.co.uk/news/articles/c893r9ke5p97o?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/cq0md8g14zryo?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/cqy7rn30v314o?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/cxj05mv723r2o?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.com/zhongwen/articles/cwe851kg1kj1o/trad?at_medium=RSS&at_campaign=rss",
+        "https://www.ithome.com/1/032/490.htm",
+        "https://www.ithome.com/1/032/535.htm",
+        "https://www.ithome.com/1/032/543.htm",
+        "https://www.ithome.com/1/032/547.htm",
+        "https://www.ithome.com/1/032/552.htm",
+        "https://www.ithome.com/1/032/557.htm",
+        "https://www.nytimes.com/2026/11/25/world/middleeast/judges-israel-corruption-case-netanyahu.html"
+      ],
+      "repos": [
+        "ag-ui-protocol/ag-ui",
+        "chromedevtools/chrome-devtools-mcp",
+        "kajisho5/ffmpeg-skill",
+        "ohmyzsh/ohmyzsh",
+        "upscayl/upscayl"
+      ],
+      "titles": [
+        "美国宣布对中国、欧盟等贸易伙伴加征关税",
+        "美股三大指数早盘齐跌，纳指跌近 4%",
+        "以色列法官建议撤掉内塔尼亚胡一宗关键案件中的严重指控",
+        "开罗环路油罐车翻覆起火，31 人死亡",
+        "白纸运动四年后，BBC 回访上海青年聚集空间",
+        "🧠 AI 大模型与工具御三家（GPT/Codex、Gemini/Antigravity、Claude）",
+        "⚡ 科技四巨头（英伟达 NVIDIA / 特斯拉 Tesla / 华为 Huawei / 苹果 Apple）",
+        "📈 今日飙升榜",
+        "[kajisho5/ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) 🌟 本周 +3,048 / 11,111 Stars | Python",
+        "[ag-ui-protocol/ag-ui](https://github.com/ag-ui-protocol/ag-ui) 🌟 本周 +1,421 / 21,720 Stars | TypeScript",
+        "[ChromeDevTools/chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp) 🌟 本周 +1,203 / 59,355 Stars | TypeScript",
+        "🏆 高分口碑榜",
+        "🏆 1. [ohmyzsh/ohmyzsh](https://github.com/ohmyzsh/ohmyzsh) ⭐ 190,894 Stars | Shell",
+        "🏆 2. [upscayl/upscayl](https://github.com/upscayl/upscayl) ⭐ 53,237 Stars | TypeScript"
+      ],
+      "updated_at": "2026-11-26T08:44:26.510080+08:00",
+      "sent_at": "2026-11-26T08:44:26.510080+08:00"
     }
   }
 }
