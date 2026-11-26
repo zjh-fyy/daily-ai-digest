@@ -19,7 +19,7 @@
 3. **🔥 板块三：GitHub 开源项目寻宝**
    - **📈 今日飙升榜（3 个）**：直接从 GitHub Trending 日榜（不足时自动用周榜补齐）按涨星热度从高到低选拔，不设单一领域茧房，谁真火就讲谁。
    - **🏆 高分口碑榜（2 个）**：从全站 16 个高星维度（数万至十数万 Star、持续维护的口碑名作）按日期轮换翻页挑选。
-   - **朋友安利式短评**：取消机械填表小标题，每个项目基于实时拉取的 README 与 Release 信息，用 **1~2 段自然大白话**直接讲明白「这是干啥的、凭啥火/好在哪、你能不能直接装上用」，**30 天内不重复推荐**。
+   - **清爽深度短评（2 短段 + 1 行专属判断）**：不堆砌繁琐的 6~7 栏填表，每个项目基于实时拉取的 README 与 Release 信息，用 **2 个自然大白话短段**讲透用途、亮点、门槛与真实避坑点，并在文末配 **1 行结合 `reader_profile.md` 的「对我有用吗」实话结论**，**30 天内不重复推荐**。
 
 ---
 
@@ -31,7 +31,7 @@ flowchart TD
     I -->|已发过且非强制| S["⏭️ 1 秒幂等跳过（不重复扣费发信）"]
     I -->|未发过| C{"仓库里有今天的预生成早报？"}
     C -->|有| D["直接推送"]
-    C -->|没有| E["云端多源采集 + GPT-6.2-sol (Medium) 提炼"]
+    C -->|没有| E["云端多源采集 + GPT-6.2-sol (High) 提炼"]
     E -->|GPT 异常| F["本地数据底座应急稿"]
     E --> D
     F --> D
@@ -47,7 +47,7 @@ flowchart TD
 | 顺序 | 引擎 | 运行位置 | 所需配置 |
 | :--- | :--- | :--- | :--- |
 | 1 | **Gemini 4 Hydrogen**（本地 Antigravity 网关，当前停用） | 仅本机 | `LOCAL_LLM_API_KEY`，可选 `LOCAL_LLM_BASE_URL`、`LOCAL_LLM_MODEL` |
-| 2 | **GPT-6.2-sol (Medium)**（`/v1/responses` 协议） | 本机 / 云端主力 | `CODEX_API_KEY` 或 `AIZEX_API_KEY`（双 Key 自动互备） |
+| 2 | **GPT-6.2-sol (High)**（`/v1/responses` 协议） | 本机 / 云端主力 | `CODEX_API_KEY` 或 `AIZEX_API_KEY`（双 Key 自动互备） |
 | 3 | **本地数据底座应急稿** | 任意 | 无需配置，所有模型都失败时自动启用 |
 
 本机默认优先走推荐香港节点 `ca.memofun.net`，云端 GitHub Actions 默认优先走 CloudFlare 全球节点 `codex-api.aizex.net`，失败时自动互切并支持流式/非流式三级自愈重试。
@@ -104,7 +104,7 @@ copy .env.example .env
 | `CODEX_API_KEY` | 必填（与下一项至少一个） | GPT-6.2-sol 的 API Key |
 | `AIZEX_API_KEY` | 选填 | 备用 Key |
 | `CODEX_BASE_URL` / `AIZEX_BASE_URL` | 选填 | 自定义 API 节点 |
-| `CODEX_MODEL` / `CODEX_EFFORT` | 选填 | 默认 `gpt-6.2-sol` / `medium` |
+| `CODEX_MODEL` / `CODEX_EFFORT` | 选填 | 默认 `gpt-6.2-sol` / `high` |
 | `EMAIL_SENDER` | 必填 | 发件邮箱，如 `xxx@qq.com` |
 | `EMAIL_PASSWORD` | 必填 | 邮箱 SMTP 授权码（不是登录密码） |
 | `EMAIL_RECEIVER` | 选填 | 收件邮箱，留空发给自己 |

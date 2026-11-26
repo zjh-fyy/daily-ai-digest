@@ -43,11 +43,11 @@ jobs:
           CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
           CODEX_BASE_URL: ${{ secrets.CODEX_BASE_URL }}
           CODEX_MODEL: ${{ secrets.CODEX_MODEL || 'gpt-6.2-sol' }}
-          CODEX_EFFORT: ${{ secrets.CODEX_EFFORT || 'medium' }}
+          CODEX_EFFORT: ${{ secrets.CODEX_EFFORT || 'high' }}
           AIZEX_API_KEY: ${{ secrets.AIZEX_API_KEY }}
           AIZEX_BASE_URL: ${{ secrets.AIZEX_BASE_URL }}
           AIZEX_MODEL: ${{ secrets.AIZEX_MODEL || 'gpt-6.2-sol' }}
-          AIZEX_EFFORT: ${{ secrets.AIZEX_EFFORT || 'medium' }}
+          AIZEX_EFFORT: ${{ secrets.AIZEX_EFFORT || 'high' }}
           LOCAL_LLM_API_KEY: ${{ secrets.LOCAL_LLM_API_KEY }}
           LOCAL_LLM_BASE_URL: ${{ secrets.LOCAL_LLM_BASE_URL }}
           LOCAL_LLM_MODEL: ${{ secrets.LOCAL_LLM_MODEL }}

@@ -756,11 +756,11 @@ CLASSIC_QUERY_POOL = [
     {"topic": "视觉设计、白板与图表", "query": "stars:>15000 topic:design archived:false", "sort": "stars"},
     {"topic": "网页与浏览器生态利器", "query": "stars:>12000 topic:browser-extension archived:false", "sort": "stars"},
     {"topic": "知识管理、文档与阅读", "query": "stars:>15000 topic:markdown archived:false", "sort": "stars"},
-    {"topic": "系统增强与硬核工具", "query": "stars:>15000 topic:windows OR topic:macos archived:false", "sort": "stars"},
-    {"topic": "音视频与多媒体名作", "query": "stars:>15000 topic:video OR topic:audio archived:false", "sort": "stars"},
-    {"topic": "信息检索、抓取与数据工具", "query": "stars:>15000 topic:search OR topic:crawler archived:false", "sort": "stars"},
+    {"topic": "系统增强与硬核工具", "query": "stars:>15000 (topic:windows OR topic:macos) archived:false", "sort": "stars"},
+    {"topic": "音视频与多媒体名作", "query": "stars:>15000 (topic:video OR topic:audio) archived:false", "sort": "stars"},
+    {"topic": "信息检索、抓取与数据工具", "query": "stars:>15000 (topic:search OR topic:crawler) archived:false", "sort": "stars"},
     {"topic": "开发者口碑瑞士军刀", "query": "stars:>25000 topic:developer-tools archived:false", "sort": "stars"},
-    {"topic": "高分开源客户端与应用", "query": "stars:>20000 topic:electron OR topic:tauri OR topic:flutter archived:false", "sort": "stars"},
+    {"topic": "高分开源客户端与应用", "query": "stars:>20000 (topic:electron OR topic:tauri OR topic:flutter) archived:false", "sort": "stars"},
 ]
 
 LOCAL_CLASSIC_GEMS_FALLBACK = [
@@ -1056,11 +1056,12 @@ def load_reader_profile() -> str:
 
 # ==================== 大模型提炼核心模块 ====================
 SYSTEM_PERSONA = (
-    "你是我的私人科技与时事早报搭子——既懂技术与国际大势，又特别会说人话。"
-    "你写早报就像两个熟人早上端着咖啡聊天：直白、清晰、有重点、好理解，绝不端架子打官腔，也绝不拽晦涩术语。"
-    "【头号文风红线】：严禁使用“不是…而是…”、“不只是…更是…”、“A不等于B”、“不能据此推导出…”、"
-    "“不宜把…理解为…”、“需要分开看/不能混为一谈”这类否定式说教句和免责车轱辘话！"
-    "直接把「发生了什么、为什么会有这事、有什么实在看点或影响」痛痛快快讲明白。"
+    "你是一位资深科技主编与国际政经观察家——既具备穿透表象的深度分析视野，又特别会用流畅自然的大白话把复杂事情讲透。"
+    "你的读者是在手机微信和邮箱里读早报的聪明人，想要的是有信息密度、有背景脉络、有独立判断的精品简报，而不是干瘪的几行快讯。"
+    "【文风双红线】："
+    "1. 戒掉否定式说教体与律所免责腔：严禁扎堆使用“不是…而是…”、“不只是…更是…”、“A不等于B”、“不能据此推导出…”、"
+    "“不宜把…理解为…”、“需要分开看/不能混为一谈”这类杠精式否定句和空洞车轱辘话；"
+    "2. 戒掉偷懒简写：去官腔绝不等于缩水！要用直白、克制、有穿透力的正面陈述，把「发生了什么、背后的利益博弈与来龙去脉、真正带来什么影响」讲深讲透。"
     "必须按顺序完整输出三大板块，严禁截断，严禁输出任何编读说明或免责声明。"
 )
 
@@ -1077,7 +1078,7 @@ def build_digest_prompt(
     github_classic_gems: Optional[List[Dict[str, Any]]] = None,
     blacklist_summary: str = ""
 ) -> str:
-    """构建通俗、自然、拒绝说教腔的早报提炼 Prompt"""
+    """构建兼具主编深度、流畅人话与清爽排版的早报提炼 Prompt"""
     now_bj = report_now()
     date_str = now_bj.strftime("%Y年%m月%d日")
     weekday_map = {0: "星期一", 1: "星期二", 2: "星期三", 3: "星期四", 4: "星期五", 5: "星期六", 6: "星期日"}
@@ -1095,79 +1096,96 @@ def build_digest_prompt(
     }
     context_json = json.dumps(context_data, ensure_ascii=False, indent=2)
 
+    reader_profile = load_reader_profile()
+    profile_section = f"""
+### 🙋 读者画像（用于板块二适度点睛，以及板块三选品把关和“对我有用吗”一行实话）
+{reader_profile}
+""" if reader_profile else ""
+
     blacklist_section = ""
     if blacklist_summary and blacklist_summary.strip() != "暂无近期历史黑名单":
         blacklist_section = f"""
 ### 🚫 近期已报道事件与开源项目黑名单（严禁炒冷饭）：
 {blacklist_summary}
 
-- 同一事件除非有实打实的新进展（标题写明“最新进展”），否则一律跳过；
+- 同一事件除非有实打实的新进展（标题写明“【最新进展】”），否则一律跳过；
 - 黑名单里的 GitHub 仓库绝对不许重复推荐。
 """
 
     prompt = f"""
-请基于下方的【原始数据底座】，帮我整理今天的早报（在手机微信和邮箱里看）。
+请以「资深科技主编 + 国际政经观察家」的身份，基于下方的【原始数据底座】，为我精编今天的早报（在手机微信和邮箱里阅读）。
 
 ### 📅 今日日期
 {date_str} {weekday_str}
 
 ### 📦 原始数据底座 (JSON)
 {context_json}
+{profile_section}
 {blacklist_section}
 ---
 
-### 🗣️ 语言风格总原则（最重要，决定整篇质量！）：
-1. **像熟人聊天一样说人话**：用自然、顺畅、一读就懂的现代口语化书面语，把复杂事情讲简单。读起来要像一个懂行的好朋友直接告诉你重点，不要像公文、社论或律所免责声明。
+### 🗣️ 语言风格与深度准则（决定整篇水准，务必落实）：
+1. **深度在线，但用自然人话写**：既要有资深主编拆解局势、看穿门道的分析厚度，又要写得流畅好读，像懂行的行家面对面把脉络讲透——绝不端官腔、绝不堆砌晦涩黑话。
 2. **彻底戒掉“否定说教体 / 杠精句式”**：
-   - **全文严禁扎堆出现** `“不是A，而是B”`、`“不只是…更是…”`、`“A不等于B”`、`“不能据此认定/推导出…”`、`“不宜把…直接理解为…”`、`“需要把X和Y分开看”` 这类句式！
-   - 读者没有误解的事，不要自己立个稻草人去反驳或泼冷水。
-3. **有料多聊细节，没料干脆简写，绝不注水**：
-   - 数据底座里有具体数字、产品型号、前因后果的，把干货细节写出来；
-   - 如果某条新闻原始数据里只有简短标题快讯、缺乏细节，就痛快用两句话把已知动态交代清楚，**绝对不要为了凑字数去写“后续值得观察、需要权衡多方利益”这种正确的废话**。
-4. **标题直接说事，别故弄玄虚**：小标题直接点明“谁干了什么/出了什么事”，不要写抽象的议论文题目。
-5. **严禁元说明**：开头导语之后直接进板块一，绝不输出“依据数据底座整理”、“未联网核实”等任何废话。
+   - 全文避免使用 `“不是A，而是B”`、`“不只是…更是…”`、`“A不等于B”`、`“不能据此认定/推导出…”`、`“不宜把…直接理解为…”`、`“需要把X和Y分开看”` 这类立稻草人反驳的说教句和免责套话。
+   - 直接用正面陈述讲清事实、边界、逻辑和看点，不必反复替读者“纠偏”。
+3. **写足干货与背景，严禁两句话敷衍**：
+   - 数据底座里有数字、型号、时间线、各方表态的，全部用上，结合你的背景知识把来龙去脉和真实影响讲透，不要只做标题复读机。
+   - 严禁凑“后续值得持续观察”“引发多方热议”这类正确的废话；如果某条原始快讯实在极短且缺少细节，就干脆挑底座里更有料的新闻，或利落交代核心动态与直接影响。
+4. **标题直白有信息量**：小标题直接点出“谁做了什么 + 核心看点/冲突”，让人扫一眼标题就知道值不值得细看。
+5. **严禁元说明**：导语之后直接进板块一，绝不输出“依据数据底座整理”、“未联网核实”等任何编读说明。
 
 ---
 
 ### 📝 三大板块结构与要求：
 
 #### 🌅 主标题：`# 每日 AI & 全球资讯早报 | {date_str} {weekday_str}`
-紧跟一句 `> 💡 **今日速览**：...`（40~60 字，用大白话点出今天最值得看的 2~3 件大事）。
+紧跟一句 `> 💡 **今日速览**：...`（50~70 字，浓缩今天最有分量的 2~3 条主线看点）。
 
-#### 🌍 板块一：全球时事
-- 挑过去 24 小时最关键的 **4~5 条**国际政经、科技或社会大事。
-- 每条用 `### 序号. 直白事件标题` 开头，正文写 **1~2 个简练自然段（120~180 字左右）**：自然串起「到底发生了啥 → 为什么会闹出这事（背景脉络） → 接下来会带来什么实在影响」，不用生硬拆分小标签。
-- 末尾附上可点击来源：`[🔗 来源：媒体名](链接)`。
+#### 🌍 板块一：全球时事（重脉络、博弈与实际影响）
+- 精选过去 24 小时最关键的 **4~5 条**国际政经、地缘或社会科技大事。
+- 每条用 `### 序号. 直白有力的事件标题` 开头，正文写 **2 个层次分明的自然段（共 220~300 字）**，不生硬拆分“核心事件：/前因后果：”标签：
+  - **第 1 段**：把核心事实交代扎实（主体、动作、关键数字、各方直接表态）；
+  - **第 2 段**：拆解背后的前因后果与利益博弈（为什么会在这时发生、各方算盘是什么），落到接下来对经济、供应链、行业或普通人的实实在在影响与后续关键节点。
+- 末尾附可点击权威来源：`[🔗 来源：媒体名](链接)`。
 
 #### 🤖 板块二：AI 核心御三家 & 科技四巨头深度追踪
-- **宁缺毋滥**：哪家今天没有实质新动向，就直接写一句“今日无重要新动态”（或把篇幅留给今天有重磅发布的其他前沿 AI 实验室如 DeepSeek、通义千问、智谱等），**严禁拿官网首页链接或套话凑数**。
-- 固定分两个子部分：
+- **宁缺毋滥**：哪家今天没有实质新动向，就直接用一句简短说明带过（如“今日无重要新动态”，或把名额让给今天有重磅发布的其他前沿 AI 实验室如 DeepSeek、通义千问、智谱等），**严禁拿官网首页链接或空话凑数**。
+- 固定分两个子部分，**每条动态必须使用 `#### 公司｜事件标题` 作为独立小标题**，方便手机端清晰扫读：
   1. `### 🧠 AI 大模型与工具御三家（GPT/Codex、Gemini/Antigravity、Claude）`
-     - 聚焦 OpenAI、Google、Anthropic 的新模型、新功能、API 价格/能力变化、编程与桌面助手实战动态。讲清楚“更新了啥、实际用起来有什么变化”。
+     - 聚焦 OpenAI、Google、Anthropic 的新模型、新功能、API/定价变化、编程与桌面 Agent 实战进展。
+     - 每条写 **160~240 字（1~2 个自然短段）**：先讲清更新了什么、有哪些硬指标或实测细节，再点出这件事在行业竞争里的位置，以及实际用起来会带来什么变化。
   2. `### ⚡ 科技四巨头（英伟达 NVIDIA / 特斯拉 Tesla / 华为 Huawei / 苹果 Apple）`
-     - **英伟达**：AI 芯片（Blackwell/Rubin）、显卡、CUDA 生态、黄仁勋与核心业务大事。
-     - **特斯拉**：FSD 自动驾驶、Optimus 机器人、Robotaxi 量产与落地进展。
-     - **华为 & 苹果**：只聊消费电子产品（手机、平板、电脑、耳机、手表、自家芯片、鸿蒙 / iOS / macOS 系统与 AI 新功能）。有具体型号、配置、价格、发布时间就写清楚；早期传闻在标题前加 `【爆料】` 即可，不用反复叠甲。
+     - 每条写 **160~240 字（1~2 个自然短段）**，先给具体事实/型号/数据，再讲行业影响或体验/选题看点（华为与苹果有重磅消费电子新品时可各写 1~2 条）。
+     - **英伟达**：AI 芯片（Blackwell/Rubin）、显卡、CUDA 生态、黄仁勋与治理/监管大事。
+     - **特斯拉**：FSD 自动驾驶、Optimus 机器人、Robotaxi 商业落地与产能进展。
+     - **华为 & 苹果**：只聊消费电子产品（手机、平板、电脑、耳机、手表、自家芯片、鸿蒙 / iOS / macOS 系统与 AI 新功能）。有具体型号、配置、价格、发布时间就写实；早期传闻在标题前加 `【爆料】` 即可，不用反复叠甲。
 - 每条末尾附真实来源链接 `[🔗 查看原文：媒体名](链接)`。
 
 #### 🔥 板块三：GitHub 开源项目寻宝
-- **选品不设信息茧房，纯看真实热度与口碑**：
-  - 不需要刻意筛选某个单一行业（AI、效率工具、桌面软件、自动化、网页应用、系统黑科技、开发者利器都可以），哪个热度最高、分最高、最值得开眼界或最好用，就选哪个！
+- **选品原则（打破信息茧房，同时对人负责）**：
+  - 优先看真实热度与高分口碑，不局限单一赛道；同时参考上方【读者画像】，优先把 AI 提效、音视频处理、桌面效率、跨设备协作、有趣好用的工具选进来，**纯底层程序员轮子/开发框架在今日飙升榜里最多选 1 个**，避免满屏都是非开发者完全用不上的代码库。
   - 黑名单铁律：近 {HISTORY_KEEP_DAYS} 天推过的仓库一律跳过。
-- **写法铁律：朋友安利式连贯短评（严禁列固定小标题填表！）**：
-  - **坚决禁止**输出 `📌 一句话说清`、`💡 打个比方`、`🎬 平时能怎么用`、`🚪 上手门槛`、`⚠️ 提前避坑`、`🙋 适合我装吗` 这类机械填空列表！
-  - 每个项目标题下面，直接写 **1~2 个自然连贯的短段（130~190 字左右）**，像懂行的朋友随口给你介绍新发现一样，一口气顺畅讲明白：
-    1. **这项目到底是干啥的**（把读者当对科技好奇但不一定写代码的朋友，用大白话把核心用途说透；遇到必须提的专业词，顺手用括号带一句人话解释）；
-    2. **它凭啥火 / 好用在哪**（依据 `live_info` 里的真实 README 资料，讲讲它解决了什么痛点、亮点在哪，禁用“神器、吊打、完美平替”这类吹牛词，资料没写的不脑补）；
-    3. **怎么用 / 门槛实话**（在段尾顺嘴带一句实在情况：比如有没有现成的 Windows/桌面安装包下载就能用、打开网页就能试，还是得敲命令行部署、或者主要是给程序员写代码用的工具；如果是刚建几天的早期新项目也顺口提一嘴）。
+- **清爽高密度写法（告别 6~7 栏繁琐填表，但绝不缩水成干瘪一句话！）**：
+  - **不要**列出 `📌 一句话说清`、`💡 打个比方`、`🎬 平时能怎么用`、`🚪 上手门槛`、`⚠️ 提前避坑` 这类密密麻麻的填空小标题！
+  - 每个项目标题下面，统一用 **「2 个流畅自然短段 + 1 行专属判断引用栏」（共 220~280 字）** 写透：
+    1. **第 1 段（讲人话、讲透亮点，约 110~140 字）**：用顺口的大白话加一个自然的生活类比，直接说明它是干啥的、能解决什么具体痛点、凭啥这么火（高分口碑榜顺嘴和同类常见软件比一句优势与差异）；遇到非提不可的技术词（如 MCP、Docker、SDK、CLI），首次出现用括号带一句人话解释，绝不照抄英文简介。
+    2. **第 2 段（说实话、落门槛与避坑，约 80~100 字）**：严格依据 `live_info` 和 `hard_facts` 把实在情况交代清楚——有没有现成的 Windows/桌面安装包直接装、还是网页打开就能用、或者得敲命令行/配环境；如果是刚建几天的新项目、标注了 alpha/beta 测试版、长期没更新、或者有显卡/系统限制，**如实自然写进这段里，绝不美化淡化**，禁用“神器、吊打、完美平替、丝滑”这类吹牛词，资料没写的不脑补。
+    3. **底栏 1 行（独立引用块，唯一标签）**：结合【读者画像】（Win11、RTX 4060 8GB、16GB 内存、iPhone + 鸿蒙平板及现有工具栈）给一句直白实在的落脚结论：
+       `> **对我有用吗**：✅ 值得一试（或 🤔 先观望 / ❌ 跟你关系不大）—— 用一两句大白话直接说清和你手头设备/工作流的关系。`
 
 - 固定分两个子部分输出：
   1. `### 📈 今日飙升榜`
-     - 从 `raw_github_trending` 中挑涨星最猛、最火的 **3 个**项目（基本按热度排名前列挑选即可）。
-     - 标题格式：`### 序号. [项目名](链接) 🌟 涨星数 / 总Stars | 语言`（如 `### 1. [owner/repo](链接) 🌟 今日 +2,406 / 18,500 Stars | Python`），紧跟 1~2 段朋友式连贯短评。
+     - 从 `raw_github_trending` 中挑 **3 个**项目。
+     - 标题格式：`### 序号. [项目名](链接) 🌟 涨星数 / 总Stars | 语言`（如 `### 1. [owner/repo](链接) 🌟 今日 +2,406 / 18,500 Stars | Python`）。
   2. `### 🏆 高分口碑榜`
      - 从 `raw_github_classic_gems` 中挑 **2 个**星数高、口碑硬、公认好用的高质量项目。
-     - 标题格式：`### 🏆 序号. [项目名](链接) ⭐ 总Stars | 语言`，紧跟 1~2 段朋友式连贯短评。
+     - 标题格式：`### 🏆 序号. [项目名](链接) ⭐ 总Stars | 语言`。
+
+---
+
+### 📱 篇幅与完整性把控
+- 整篇控制在信息充实、手机上 3~5 分钟读完最舒服的体量（全篇约 8,500~11,500 字符），三大板块务必全部完整写透，不截断、不注水。
 """
     return prompt
 
@@ -1217,13 +1235,13 @@ def generate_digest_with_gpt_sol(
     blacklist_summary: str = ""
 ) -> tuple:
     """
-    调用主力云端 API (默认 gpt-6.2-sol + medium 思考)，使用 /v1/responses 协议。
+    调用主力云端 API (默认 gpt-6.2-sol + high 深度思考)，使用 /v1/responses 协议。
     返回 (content, engine_label)。
     内置多节点智能切换（本机优先香港直连 ca.memofun.net，云端 Actions 优先 CloudFlare 全球节点 codex-api.aizex.net）、
     最多 3 次指数退避重试，并在重试失败时自动降级非流式单次抓取。
     """
     model = (os.getenv("CODEX_MODEL") or os.getenv("AIZEX_MODEL") or "gpt-6.2-sol").strip()
-    effort = (os.getenv("CODEX_EFFORT") or os.getenv("AIZEX_EFFORT") or "medium").strip().lower()
+    effort = (os.getenv("CODEX_EFFORT") or os.getenv("AIZEX_EFFORT") or "high").strip().lower()
     engine_label = format_gpt_label(model, effort)
 
     is_github_actions = (os.getenv("GITHUB_ACTIONS") or "").strip().lower() == "true"
@@ -1334,7 +1352,7 @@ def generate_digest_with_gpt_sol(
                 content = ("".join(text_parts) or "".join(delta_parts)).strip()
 
                 if stream_error:
-                    if len(content) >= 1200 and "板块三" in content:
+                    if len(content) >= 1200 and ("板块三" in content or "GitHub" in content):
                         print(f"  ⚠️ 流式中途收到结束提示但正文已完整接收 ({len(content)} 字符)，正常采纳。")
                         return content, engine_label
                     raise RuntimeError(stream_error)
@@ -1368,7 +1386,7 @@ def extract_engine_label(text: str) -> tuple:
     返回 (clean_text, engine_label)。
     """
     default_model = (os.getenv("CODEX_MODEL") or os.getenv("AIZEX_MODEL") or "gpt-6.2-sol").strip()
-    default_effort = (os.getenv("CODEX_EFFORT") or os.getenv("AIZEX_EFFORT") or "medium").strip().lower()
+    default_effort = (os.getenv("CODEX_EFFORT") or os.getenv("AIZEX_EFFORT") or "high").strip().lower()
     default_label = format_gpt_label(default_model, default_effort)
 
     if not text:
@@ -1441,7 +1459,7 @@ def generate_digest(
             return None
 
         target_model = (os.getenv("CODEX_MODEL") or os.getenv("AIZEX_MODEL") or "gpt-6.2-sol").strip()
-        target_effort = (os.getenv("CODEX_EFFORT") or os.getenv("AIZEX_EFFORT") or "medium").strip().lower()
+        target_effort = (os.getenv("CODEX_EFFORT") or os.getenv("AIZEX_EFFORT") or "high").strip().lower()
         target_label = format_gpt_label(target_model, target_effort)
         print(f"\n🧠 调度主力云端引擎: {target_label}...")
 
@@ -1634,7 +1652,7 @@ def markdown_to_html(md_text: str, title: str, engine_label: Optional[str] = Non
         if line_s.startswith('#### '):
             close_list()
             h_text = format_inline(line_s[5:].strip())
-            html_lines.append(f'<h4 style="margin:14px 0 6px;color:#334155;font-size:14px;font-weight:600;">{h_text}</h4>')
+            html_lines.append(f'<h4 style="margin:16px 0 6px;color:#0f172a;font-size:15px;font-weight:700;">{h_text}</h4>')
             continue
 
         if line_s.startswith('> '):
