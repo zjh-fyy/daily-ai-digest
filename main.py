@@ -783,14 +783,18 @@ LOCAL_CLASSIC_GEMS_FALLBACK = [
 ]
 
 
-def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+def fetch_github_classic_gems(
+    exclude_names: Optional[Set[str]] = None,
+    exclude_owners: Optional[Set[str]] = None,
+) -> List[Dict[str, Any]]:
     """
     抓取板块三“高分口碑榜”候选池（全网视野，不设信息茧房）：
     1. 按北京时间日期确定性轮换抽取 2 个大类 + 动态翻页 (page 1~3)，确保每天既有几万星的口碑硬货，又不翻来覆去只看榜首那两个
-    2. 过滤已归档停更仓库与近 30 天已推仓库
+    2. 过滤已归档停更仓库、近 30 天已推仓库，以及当日飙升榜已覆盖的同组织/同作者 (owner) 仓库，避免同门撞车
     """
     print("\n[4/4] 正在检索【GitHub 全领域高分口碑榜】候选池...")
     exclude_set = {n.lower() for n in (exclude_names or set())}
+    exclude_owner_set = {o.lower() for o in (exclude_owners or set()) if o}
 
     now_bj = datetime.now(BEIJING_TZ)
     date_str = now_bj.strftime("%Y-%m-%d")
@@ -808,6 +812,7 @@ def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[
 
     candidate_gems: List[Dict[str, Any]] = []
     seen_repo_names = set()
+    seen_owners = set(exclude_owner_set)
 
     for q_item in selected_queries:
         topic_label = q_item["topic"]
@@ -824,10 +829,15 @@ def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[
                         continue
                     full_name = repo.get("full_name", "")
                     fn_lower = full_name.lower()
+                    owner_lower = fn_lower.split("/", 1)[0] if "/" in fn_lower else ""
                     if not full_name or fn_lower in exclude_set or fn_lower in seen_repo_names:
+                        continue
+                    if owner_lower and owner_lower in seen_owners:
                         continue
 
                     seen_repo_names.add(fn_lower)
+                    if owner_lower:
+                        seen_owners.add(owner_lower)
                     stargazers = repo.get("stargazers_count", 0)
                     candidate_gems.append({
                         "name": full_name,
@@ -854,8 +864,11 @@ def fetch_github_classic_gems(exclude_names: Optional[Set[str]] = None) -> List[
         for i in range(fallback_len):
             fb_item = LOCAL_CLASSIC_GEMS_FALLBACK[(start_offset + i) % fallback_len]
             fn_lower = fb_item["name"].lower()
-            if fn_lower not in exclude_set and fn_lower not in seen_repo_names:
+            owner_lower = fn_lower.split("/", 1)[0] if "/" in fn_lower else ""
+            if fn_lower not in exclude_set and fn_lower not in seen_repo_names and owner_lower not in seen_owners:
                 seen_repo_names.add(fn_lower)
+                if owner_lower:
+                    seen_owners.add(owner_lower)
                 candidate_gems.append({
                     "name": fb_item["name"],
                     "url": fb_item["url"],
@@ -1165,7 +1178,7 @@ def build_digest_prompt(
 #### 🔥 板块三：GitHub 开源项目寻宝
 - **选品原则（打破信息茧房，同时对人负责）**：
   - 优先看真实热度与高分口碑，不局限单一赛道；同时参考上方【读者画像】，优先把 AI 提效、音视频处理、桌面效率、跨设备协作、有趣好用的工具选进来，**纯底层程序员轮子/开发框架在今日飙升榜里最多选 1 个**，避免满屏都是非开发者完全用不上的代码库。
-  - 黑名单铁律：近 {HISTORY_KEEP_DAYS} 天推过的仓库一律跳过。
+  - 黑名单铁律：近 {HISTORY_KEEP_DAYS} 天推过的仓库一律跳过；同一天两个榜单避免选同一个作者/组织（owner）旗下的两个项目，保证视角多样。
 - **清爽高密度写法（告别 6~7 栏繁琐填表，但绝不缩水成干瘪一句话！）**：
   - **不要**列出 `📌 一句话说清`、`💡 打个比方`、`🎬 平时能怎么用`、`🚪 上手门槛`、`⚠️ 提前避坑` 这类密密麻麻的填空小标题！
   - 每个项目标题下面，统一用 **「2 个流畅自然短段 + 1 行专属判断引用栏」（共 220~280 字）** 写透：
@@ -1864,9 +1877,13 @@ def main():
     ai_news = collect_ai_news(seen_urls=seen_urls, seen_titles=seen_titles)
     github_trending = collect_github_trending(seen_repos=seen_repos)
     trending_names = {p.get("name", "").lower() for p in github_trending}
-    # 经典宝藏排除 今日 trending + 近 5 天历史推荐的 repo
+    trending_owners = {n.split("/", 1)[0] for n in trending_names if "/" in n}
+    # 经典宝藏排除 今日 trending + 近 5 天历史推荐的 repo，并避开今日飙升榜同组织/同作者仓库
     exclude_classic_names = trending_names | seen_repos
-    github_classic_gems = fetch_github_classic_gems(exclude_names=exclude_classic_names)
+    github_classic_gems = fetch_github_classic_gems(
+        exclude_names=exclude_classic_names,
+        exclude_owners=trending_owners,
+    )
     github_trending = enrich_github_projects(github_trending[:8], "今日飙升")
     github_classic_gems = enrich_github_projects(github_classic_gems[:6], "每日宝藏")
     total_scraped = len(global_news) + len(ai_news) + len(github_trending) + len(github_classic_gems)
