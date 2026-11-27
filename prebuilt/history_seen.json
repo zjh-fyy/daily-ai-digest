@@ -1034,6 +1034,54 @@
       ],
       "updated_at": "2026-11-26T08:44:26.510080+08:00",
       "sent_at": "2026-11-26T08:44:26.510080+08:00"
+    },
+    "2026-11-27": {
+      "urls": [
+        "https://github.com/gorhill/uBlock",
+        "https://github.com/heygen-com/hyperframes",
+        "https://github.com/n8n-io/n8n",
+        "https://github.com/n8n-io/nod",
+        "https://github.com/obsidianmd/obsidian-skills",
+        "https://www.bbc.co.uk/news/articles/c820q9wgrpyyo?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.co.uk/news/articles/ckm2mz3prq77o?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.com/zhongwen/articles/cm62p52417ywo/trad?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.com/zhongwen/articles/cwlymzm5mnxyo/trad?at_medium=RSS&at_campaign=rss",
+        "https://www.bbc.com/zhongwen/articles/cwz0kymdzdd8o/trad?at_medium=RSS&at_campaign=rss",
+        "https://www.ithome.com/1/033/130.htm",
+        "https://www.ithome.com/1/033/138.htm",
+        "https://www.ithome.com/1/033/140.htm",
+        "https://www.ithome.com/1/033/143.htm",
+        "https://www.ithome.com/1/033/151.htm",
+        "https://www.ithome.com/1/033/157.htm",
+        "https://www.nytimes.com/2026/11/26/world/middleeast/italians-killed-iran-drone-attack-kuwait.html",
+        "https://www.theverge.com/gadgets/1035932/apple-macbook-neo-black-friday-2026-deal-sale"
+      ],
+      "repos": [
+        "gorhill/ublock",
+        "heygen-com/hyperframes",
+        "n8n-io/n8n",
+        "n8n-io/nod",
+        "obsidianmd/obsidian-skills"
+      ],
+      "titles": [
+        "沈伯洋取消台北「选前之夜」，民进党临门一脚改靠基层动员",
+        "特朗普账户年内交易英伟达股票 44 次，芯片政策与资产披露交叠",
+        "泽连斯基批美国把重心放在中东，要求华盛顿对俄加压",
+        "科威特遇袭致两名意大利人死亡，海湾停战谈判仍卡住",
+        "风暴夹击美国东西海岸，感恩节返程面临航班延误和停电",
+        "🧠 AI 大模型与工具御三家（GPT/Codex、Gemini/Antigravity、Claude）",
+        "OpenAI｜修复 GPT-6.2 额度少扣，Astra 和 Sol 更快触及上限",
+        "DeepSeek｜灰度展示每轮对话的 Token、估算金额和上下文占用",
+        "⚡ 科技四巨头（英伟达 NVIDIA / 特斯拉 Tesla / 华为 Huawei / 苹果 Apple）",
+        "英伟达｜621.40 驱动缓解 SSD 异常写入，部分用户遇到黑屏",
+        "英伟达生态｜第三方 G-SYNC 工具瞄准约 60 FPS 的 OLED 闪烁",
+        "华为｜鸿蒙公开五大技术品牌，平板选题可以从跨设备接力下手",
+        "苹果｜黑五官网送礼品卡，MacBook Neo 在部分零售商直降 100 美元",
+        "📈 今日飙升榜",
+        "[heygen-com/hyperframes](https://github.com/heygen-com/hyperframes) 🌟 本月 +18,292 / 90,881 Stars | TypeScript"
+      ],
+      "updated_at": "2026-11-27T09:00:15.270656+08:00",
+      "sent_at": "2026-11-27T09:00:15.270656+08:00"
     }
   }
 }
